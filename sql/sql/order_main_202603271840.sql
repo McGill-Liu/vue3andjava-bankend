@@ -1,0 +1,3 @@
+INSERT INTO points_mall.order_main (created_at,updated_at,order_no,customer_id,customer_name,customer_phone,total_points,status,recipient_name,recipient_phone,recipient_address,shipping_company,shipping_no,shipped_at,completed_at,cancelled_at) VALUES
+	 ('2026-03-27 15:42:45','2026-03-27 15:42:45','PM202603270001',2,'张三','18800000001',399,'SHIPPED','张三','18800000001','上海市上海市浦东新区张江高科博云路 88 号','顺丰','SF202603270001','2026-03-27 15:42:45',NULL,NULL),
+	 ('2026-03-27 15:42:45','2026-03-27 15:42:45','PM202603270002',3,'李四','18800000002',169,'PENDING_SHIPMENT','李四','18800000002','浙江省杭州市西湖区文三路 188 号 2 幢 1201',NULL,NULL,NULL,NULL,NULL);

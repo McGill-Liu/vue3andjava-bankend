@@ -1,0 +1,56 @@
+package com.mall.pointsmall.entity;
+
+import com.mall.pointsmall.enums.OrderStatus;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.time.LocalDateTime;
+
+@Getter
+@Setter
+@Entity
+@Table(name = "order_main")
+public class OrderMain extends BaseEntity {
+    @Column(nullable = false, unique = true)
+    private String orderNo;
+
+    @Column(nullable = false)
+    private Long customerId;
+
+    @Column(nullable = false)
+    private String customerName;
+
+    @Column(nullable = false)
+    private String customerPhone;
+
+    @Column(nullable = false)
+    private Integer totalPoints;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private OrderStatus status = OrderStatus.PENDING_SHIPMENT;
+
+    @Column(nullable = false)
+    private String recipientName;
+
+    @Column(nullable = false)
+    private String recipientPhone;
+
+    @Column(nullable = false)
+    private String recipientAddress;
+
+    private String shippingCompany;
+
+    private String shippingNo;
+
+    private LocalDateTime shippedAt;
+
+    private LocalDateTime completedAt;
+
+    private LocalDateTime cancelledAt;
+}

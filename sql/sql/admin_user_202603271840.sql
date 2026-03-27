@@ -1,0 +1,3 @@
+INSERT INTO points_mall.admin_user (created_at,updated_at,phone,name,password_hash,email,`role`,enabled,permissions_json) VALUES
+	 ('2026-03-26 15:48:09','2026-03-26 17:47:13','13800000000','超级管理员','$2a$10$hLlGWmkiMjsrc8OTn94IGOMbathm/2dzbEq7S2mPyumvD1Pvov4QC','boss@example.com','SUPER_ADMIN',1,'{"USERS": "EDIT", "ADMINS": "EDIT", "ORDERS": "EDIT", "POINTS": "EDIT", "PRODUCTS": "EDIT", "APPROVALS": "EDIT", "NOTIFICATIONS": "EDIT"}'),
+	 ('2026-03-26 15:48:09','2026-03-26 17:47:21','13711112222','业务员','$2a$10$fNfLcWBlahsBgWqcuaZa2e0IMKvn4yZ.WiIz3N/XiJFc4ufF2gRIy','operator@example.com','OPERATOR',1,'{"NOTIFICATIONS":"EDIT","USERS":"VIEW","POINTS":"VIEW","PRODUCTS":"EDIT","ORDERS":"EDIT"}');
