@@ -5,7 +5,10 @@ import com.mall.pointsmall.dto.AuthDtos;
 import com.mall.pointsmall.security.SecurityUtils;
 import com.mall.pointsmall.service.AuthService;
 import jakarta.validation.Valid;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -28,7 +31,7 @@ public class AuthController {
     }
 
     @PostMapping("/admin/login")
-    public ApiResponse<AuthDtos.TokenResponse> adminLogin(@Valid @RequestBody AuthDtos.LoginRequest request) {
+    public ApiResponse<AuthDtos.TokenResponse> adminLogin(@Valid @RequestBody AuthDtos.AdminLoginRequest request) {
         return ApiResponse.ok(authService.loginAdmin(request));
     }
 

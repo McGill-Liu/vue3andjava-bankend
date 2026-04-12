@@ -18,6 +18,15 @@ public class AuthDtos {
     }
 
     @Data
+    public static class AdminLoginRequest {
+        @NotBlank(message = "管理员名称不能为空")
+        private String name;
+
+        @NotBlank(message = "密码不能为空")
+        private String password;
+    }
+
+    @Data
     public static class RegisterRequest {
         @NotBlank(message = "姓名不能为空")
         private String name;

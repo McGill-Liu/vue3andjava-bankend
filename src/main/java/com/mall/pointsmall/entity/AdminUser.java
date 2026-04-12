@@ -15,10 +15,7 @@ import lombok.Setter;
 @Entity
 @Table(name = "admin_user")
 public class AdminUser extends BaseEntity {
-    @Column(nullable = false, unique = true, length = 20)
-    private String phone;
-
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true, length = 100)
     private String name;
 
     @Column(nullable = false)

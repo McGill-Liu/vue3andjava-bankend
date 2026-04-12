@@ -11,6 +11,7 @@ import com.mall.pointsmall.security.SecurityUser;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Service
@@ -41,7 +42,7 @@ public class AdminPermissionService {
     }
 
     public Map<String, String> defaultPermissions(RoleType role) {
-        Map<String, String> permissions = new HashMap<>();
+        Map<String, String> permissions = new LinkedHashMap<>();
         if (role == RoleType.SUPER_ADMIN) {
             permissions.put(AdminMenuKey.NOTIFICATIONS.name(), MenuPermissionLevel.EDIT.name());
             permissions.put(AdminMenuKey.APPROVALS.name(), MenuPermissionLevel.EDIT.name());
@@ -53,10 +54,11 @@ public class AdminPermissionService {
             return permissions;
         }
         permissions.put(AdminMenuKey.NOTIFICATIONS.name(), MenuPermissionLevel.EDIT.name());
-        permissions.put(AdminMenuKey.PRODUCTS.name(), MenuPermissionLevel.EDIT.name());
-        permissions.put(AdminMenuKey.ORDERS.name(), MenuPermissionLevel.EDIT.name());
+        permissions.put(AdminMenuKey.APPROVALS.name(), MenuPermissionLevel.NONE.name());
         permissions.put(AdminMenuKey.USERS.name(), MenuPermissionLevel.VIEW.name());
         permissions.put(AdminMenuKey.POINTS.name(), MenuPermissionLevel.VIEW.name());
+        permissions.put(AdminMenuKey.PRODUCTS.name(), MenuPermissionLevel.EDIT.name());
+        permissions.put(AdminMenuKey.ORDERS.name(), MenuPermissionLevel.EDIT.name());
         return permissions;
     }
 
@@ -69,6 +71,21 @@ public class AdminPermissionService {
             parsed = defaultPermissions(adminUser.getRole());
         }
         return parsed;
+    }
+
+    public Map<String, String> normalizeOperatorPermissions(Map<String, String> incoming) {
+        Map<String, String> normalized = new LinkedHashMap<>();
+        for (AdminMenuKey key : AdminMenuKey.values()) {
+            if (key == AdminMenuKey.ADMINS) {
+                continue;
+            }
+            String raw = incoming == null ? null : incoming.get(key.name());
+            MenuPermissionLevel level = raw == null ? MenuPermissionLevel.NONE : MenuPermissionLevel.valueOf(raw);
+            if (level != MenuPermissionLevel.NONE) {
+                normalized.put(key.name(), level.name());
+            }
+        }
+        return normalized;
     }
 
     public void assertView(SecurityUser user, AdminMenuKey menuKey) {

@@ -37,32 +37,37 @@ public class DataInitializer implements CommandLineRunner {
         if (adminUserRepository.count() == 0) {
             AdminUser superAdmin = new AdminUser();
             superAdmin.setName("超级管理员");
-            superAdmin.setPhone("13800000000");
-            superAdmin.setEmail("boss@example.com");
+            superAdmin.setEmail("textas7lee@foxmail.com");
             superAdmin.setRole(RoleType.SUPER_ADMIN);
-            superAdmin.setPermissionsJson(adminPermissionService.toJson(adminPermissionService.defaultPermissions(RoleType.SUPER_ADMIN)));
+            superAdmin.setPermissionsJson(adminPermissionService.toJson(
+                    adminPermissionService.defaultPermissions(RoleType.SUPER_ADMIN)
+            ));
             superAdmin.setPasswordHash(passwordEncoder.encode("Admin@123"));
             adminUserRepository.save(superAdmin);
 
             AdminUser operator = new AdminUser();
             operator.setName("业务员");
-            operator.setPhone("13900000000");
             operator.setEmail("operator@example.com");
             operator.setRole(RoleType.OPERATOR);
-            operator.setPermissionsJson(adminPermissionService.toJson(adminPermissionService.defaultPermissions(RoleType.OPERATOR)));
+            operator.setPermissionsJson(adminPermissionService.toJson(
+                    adminPermissionService.defaultPermissions(RoleType.OPERATOR)
+            ));
             operator.setPasswordHash(passwordEncoder.encode("Operator@123"));
             adminUserRepository.save(operator);
         } else {
             adminUserRepository.findAll().forEach(adminUser -> {
                 if (adminUser.getPermissionsJson() == null || adminUser.getPermissionsJson().isBlank()) {
-                    adminUser.setPermissionsJson(adminPermissionService.toJson(adminPermissionService.defaultPermissions(adminUser.getRole())));
+                    adminUser.setPermissionsJson(adminPermissionService.toJson(
+                            adminPermissionService.defaultPermissions(adminUser.getRole())
+                    ));
                     adminUserRepository.save(adminUser);
                 }
             });
         }
+
         if (categoryRepository.count() == 0) {
             ProductCategory category = new ProductCategory();
-            category.setName("精选好物");
+            category.setName("精选好礼");
             category.setSortOrder(1);
             ProductCategory savedCategory = categoryRepository.save(category);
 

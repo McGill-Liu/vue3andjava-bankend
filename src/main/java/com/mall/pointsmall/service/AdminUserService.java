@@ -35,17 +35,16 @@ public class AdminUserService {
     @Transactional
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public AdminDtos.AdminResponse create(AdminDtos.AdminCreateRequest request) {
-        adminUserRepository.findByPhone(request.getPhone()).ifPresent(item -> {
-            throw new BusinessException("管理员手机号已存在");
-        });
+        if (adminUserRepository.existsByName(request.getName())) {
+            throw new BusinessException("管理员名称已存在");
+        }
         AdminUser adminUser = new AdminUser();
         adminUser.setName(request.getName());
-        adminUser.setPhone(request.getPhone());
         adminUser.setEmail(request.getEmail());
         adminUser.setRole(RoleType.OPERATOR);
         adminUser.setEnabled(true);
         adminUser.setPasswordHash(passwordEncoder.encode(request.getPassword()));
-        Map<String, String> permissions = request.getPermissions();
+        Map<String, String> permissions = adminPermissionService.normalizeOperatorPermissions(request.getPermissions());
         adminUser.setPermissionsJson(adminPermissionService.toJson(permissions));
         return toResponse(adminUserRepository.save(adminUser));
     }
@@ -57,10 +56,14 @@ public class AdminUserService {
         if (adminUser.getRole() == RoleType.SUPER_ADMIN) {
             throw new BusinessException("不能修改超级管理员权限");
         }
+        if (!adminUser.getName().equals(request.getName()) && adminUserRepository.existsByName(request.getName())) {
+            throw new BusinessException("管理员名称已存在");
+        }
         adminUser.setName(request.getName());
-        adminUser.setPhone(request.getPhone());
         adminUser.setEmail(request.getEmail());
-        adminUser.setPermissionsJson(adminPermissionService.toJson(request.getPermissions()));
+        adminUser.setPermissionsJson(adminPermissionService.toJson(
+                adminPermissionService.normalizeOperatorPermissions(request.getPermissions())
+        ));
         return toResponse(adminUserRepository.save(adminUser));
     }
 
@@ -84,9 +87,7 @@ public class AdminUserService {
         AdminDtos.AdminResponse response = new AdminDtos.AdminResponse();
         response.setId(adminUser.getId());
         response.setName(adminUser.getName());
-        response.setPhone(adminUser.getPhone());
         response.setEmail(adminUser.getEmail());
-        response.setRole(adminUser.getRole().name());
         response.setEnabled(adminUser.isEnabled());
         response.setPermissions(adminPermissionService.resolvedPermissions(adminUser));
         return response;

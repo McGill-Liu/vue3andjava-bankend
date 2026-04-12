@@ -43,8 +43,10 @@ public class AdminDtos {
     public static class PointsAdjustmentRequest {
         @NotNull(message = "用户不能为空")
         private Long customerId;
+
         @NotNull(message = "积分不能为空")
         private Integer amount;
+
         private String remark;
     }
 
@@ -52,6 +54,7 @@ public class AdminDtos {
     public static class ShipOrderRequest {
         @NotBlank(message = "物流公司不能为空")
         private String shippingCompany;
+
         @NotBlank(message = "物流单号不能为空")
         private String shippingNo;
     }
@@ -72,12 +75,13 @@ public class AdminDtos {
     public static class AdminCreateRequest {
         @NotBlank(message = "姓名不能为空")
         private String name;
-        @NotBlank(message = "手机号不能为空")
-        private String phone;
+
         @NotBlank(message = "邮箱不能为空")
         private String email;
+
         @NotBlank(message = "密码不能为空")
         private String password;
+
         private Map<String, String> permissions;
     }
 
@@ -85,10 +89,10 @@ public class AdminDtos {
     public static class AdminUpdateRequest {
         @NotBlank(message = "姓名不能为空")
         private String name;
-        @NotBlank(message = "手机号不能为空")
-        private String phone;
+
         @NotBlank(message = "邮箱不能为空")
         private String email;
+
         private Map<String, String> permissions;
     }
 
@@ -108,9 +112,7 @@ public class AdminDtos {
     public static class AdminResponse {
         private Long id;
         private String name;
-        private String phone;
         private String email;
-        private String role;
         private boolean enabled;
         private Map<String, String> permissions;
     }

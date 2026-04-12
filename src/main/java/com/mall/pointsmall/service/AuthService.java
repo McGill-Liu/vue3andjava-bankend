@@ -71,8 +71,8 @@ public class AuthService {
         return buildToken(new SecurityUser(user.getId(), user.getName(), user.getPhone(), RoleType.CUSTOMER, null));
     }
 
-    public AuthDtos.TokenResponse loginAdmin(AuthDtos.LoginRequest request) {
-        AdminUser user = adminUserRepository.findByPhone(request.getPhone())
+    public AuthDtos.TokenResponse loginAdmin(AuthDtos.AdminLoginRequest request) {
+        AdminUser user = adminUserRepository.findByName(request.getName())
                 .orElseThrow(() -> new BusinessException("账号或密码错误"));
         if (!user.isEnabled() || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             throw new BusinessException("账号或密码错误");
@@ -80,7 +80,7 @@ public class AuthService {
         return buildToken(new SecurityUser(
                 user.getId(),
                 user.getName(),
-                user.getPhone(),
+                null,
                 user.getRole(),
                 adminPermissionService.resolvedPermissions(user)
         ));
