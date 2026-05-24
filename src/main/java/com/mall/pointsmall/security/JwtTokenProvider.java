@@ -17,26 +17,33 @@ import java.util.Map;
 public class JwtTokenProvider {
     private final SecretKey secretKey;
     private final long accessTokenSeconds;
+    private final long customerAccessTokenSeconds;
     private final long refreshTokenSeconds;
 
     public JwtTokenProvider(@Value("${app.jwt.secret}") String secret,
                             @Value("${app.jwt.access-token-seconds}") long accessTokenSeconds,
+                            @Value("${app.jwt.customer-access-token-seconds}") long customerAccessTokenSeconds,
                             @Value("${app.jwt.refresh-token-seconds}") long refreshTokenSeconds) {
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.accessTokenSeconds = accessTokenSeconds;
+        this.customerAccessTokenSeconds = customerAccessTokenSeconds;
         this.refreshTokenSeconds = refreshTokenSeconds;
     }
 
     public String generateAccessToken(SecurityUser user) {
-        return buildToken(user, accessTokenSeconds, "access");
+        return buildToken(user, accessTokenSeconds, "access", null);
+    }
+
+    public String generateCustomerAccessToken(SecurityUser user, String sessionId) {
+        return buildToken(user, customerAccessTokenSeconds, "access", sessionId);
     }
 
     public String generateRefreshToken(SecurityUser user) {
-        return buildToken(user, refreshTokenSeconds, "refresh");
+        return buildToken(user, refreshTokenSeconds, "refresh", null);
     }
 
     public SecurityUser parse(String token) {
-        Claims claims = Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token).getPayload();
+        Claims claims = claims(token);
         return new SecurityUser(
                 Long.valueOf(claims.getSubject()),
                 claims.get("name", String.class),
@@ -46,14 +53,21 @@ public class JwtTokenProvider {
         );
     }
 
-    public String tokenType(String token) {
-        Claims claims = Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token).getPayload();
-        return claims.get("tokenType", String.class);
+    public String sessionId(String token) {
+        return claims(token).get("sessionId", String.class);
     }
 
-    private String buildToken(SecurityUser user, long seconds, String type) {
+    public String tokenType(String token) {
+        return claims(token).get("tokenType", String.class);
+    }
+
+    private Claims claims(String token) {
+        return Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token).getPayload();
+    }
+
+    private String buildToken(SecurityUser user, long seconds, String type, String sessionId) {
         Instant now = Instant.now();
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(String.valueOf(user.getId()))
                 .claim("name", user.getName())
                 .claim("phone", user.getPhone())
@@ -61,8 +75,10 @@ public class JwtTokenProvider {
                 .claim("permissions", user.getPermissions())
                 .claim("tokenType", type)
                 .issuedAt(Date.from(now))
-                .expiration(Date.from(now.plusSeconds(seconds)))
-                .signWith(secretKey)
-                .compact();
+                .expiration(Date.from(now.plusSeconds(seconds)));
+        if (sessionId != null) {
+            builder.claim("sessionId", sessionId);
+        }
+        return builder.signWith(secretKey).compact();
     }
 }

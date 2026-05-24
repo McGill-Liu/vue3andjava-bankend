@@ -1,14 +1,16 @@
 package com.mall.pointsmall.service;
 
-import com.mall.pointsmall.dto.AdminDtos;
+import com.mall.pointsmall.entity.CustomerUser;
 import com.mall.pointsmall.entity.PointsAccount;
 import com.mall.pointsmall.entity.PointsTransaction;
+import com.mall.pointsmall.enums.PointsActorType;
 import com.mall.pointsmall.enums.PointsTransactionType;
 import com.mall.pointsmall.exception.BusinessException;
+import com.mall.pointsmall.repository.CustomerUserRepository;
 import com.mall.pointsmall.repository.PointsAccountRepository;
 import com.mall.pointsmall.repository.PointsTransactionRepository;
+import com.mall.pointsmall.security.SecurityUser;
 import jakarta.transaction.Transactional;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -17,64 +19,99 @@ import java.util.List;
 public class PointsService {
     private final PointsAccountRepository pointsAccountRepository;
     private final PointsTransactionRepository pointsTransactionRepository;
+    private final CustomerUserRepository customerUserRepository;
 
     public PointsService(PointsAccountRepository pointsAccountRepository,
-                         PointsTransactionRepository pointsTransactionRepository) {
+                         PointsTransactionRepository pointsTransactionRepository,
+                         CustomerUserRepository customerUserRepository) {
         this.pointsAccountRepository = pointsAccountRepository;
         this.pointsTransactionRepository = pointsTransactionRepository;
+        this.customerUserRepository = customerUserRepository;
     }
 
-    public List<PointsAccount> listAccounts() {
-        return pointsAccountRepository.findAll();
+    public int balanceOf(Long customerId) {
+        return pointsAccountRepository.findByCustomerId(customerId).map(PointsAccount::getBalance).orElse(0);
     }
 
     public List<PointsTransaction> transactions(Long customerId) {
-        return customerId == null ? pointsTransactionRepository.findAll()
+        return customerId == null ? pointsTransactionRepository.findAllByOrderByCreatedAtDesc()
                 : pointsTransactionRepository.findByCustomerIdOrderByCreatedAtDesc(customerId);
     }
 
     @Transactional
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
-    public void adjust(AdminDtos.PointsAdjustmentRequest request) {
-        changePoints(request.getCustomerId(), request.getAmount(), PointsTransactionType.ADMIN_ADJUST, null, request.getRemark());
-    }
-
-    @Transactional
-    public void changePoints(Long customerId, int amount, PointsTransactionType type, Long orderId, String remark) {
-        PointsAccount account = pointsAccountRepository.findByCustomerId(customerId)
-                .orElseThrow(() -> new BusinessException("积分账户不存在"));
-        int nextBalance = account.getBalance() + amount;
-        if (nextBalance < 0) {
-            throw new BusinessException("积分不足");
-        }
-        account.setBalance(nextBalance);
-        pointsAccountRepository.save(account);
-        PointsTransaction transaction = new PointsTransaction();
-        transaction.setCustomerId(customerId);
-        transaction.setType(type);
-        transaction.setAmount(amount);
-        transaction.setOrderId(orderId);
-        transaction.setRemark(remark);
-        transaction.setBalanceAfter(nextBalance);
-        pointsTransactionRepository.save(transaction);
-    }
-
-    @Transactional
-    public void initialize(Long customerId, int amount, String remark) {
-        PointsAccount account = pointsAccountRepository.findByCustomerId(customerId).orElseGet(() -> {
-            PointsAccount created = new PointsAccount();
-            created.setCustomerId(customerId);
-            created.setBalance(0);
-            return created;
-        });
+    public PointsTransaction initialize(Long customerId, int amount, SecurityUser actor) {
+        PointsAccount account = new PointsAccount();
+        account.setCustomerId(customerId);
         account.setBalance(amount);
         pointsAccountRepository.save(account);
+        return saveTransaction(customerId, PointsTransactionType.ADMIN_INIT, amount, 0, amount, null,
+                "新增客户初始化积分", PointsActorType.ADMIN, actor.getId(), actor.getName());
+    }
+
+    @Transactional
+    public PointsTransaction setBalance(Long customerId, int targetBalance, String remark, SecurityUser actor) {
+        PointsAccount account = requireAccount(customerId);
+        int before = account.getBalance();
+        int amount = targetBalance - before;
+        if (amount == 0) {
+            throw new BusinessException("目标积分与当前积分相同");
+        }
+        account.setBalance(targetBalance);
+        pointsAccountRepository.save(account);
+        return saveTransaction(customerId, PointsTransactionType.ADMIN_ADJUST, amount, before, targetBalance, null,
+                remark == null || remark.isBlank() ? "员工调整积分" : remark,
+                PointsActorType.ADMIN, actor.getId(), actor.getName());
+    }
+
+    @Transactional
+    public PointsTransaction changeForCustomer(Long customerId, int amount, PointsTransactionType type,
+                                               Long orderId, String remark, String customerName) {
+        return changePoints(customerId, amount, type, orderId, remark, PointsActorType.CUSTOMER, customerId, customerName);
+    }
+
+    @Transactional
+    public PointsTransaction changeBySystem(Long customerId, int amount, PointsTransactionType type,
+                                            Long orderId, String remark) {
+        return changePoints(customerId, amount, type, orderId, remark, PointsActorType.SYSTEM, null, "系统自动处理");
+    }
+
+    private PointsTransaction changePoints(Long customerId, int amount, PointsTransactionType type, Long orderId,
+                                           String remark, PointsActorType actorType, Long actorId, String actorName) {
+        PointsAccount account = requireAccount(customerId);
+        int before = account.getBalance();
+        int after = before + amount;
+        if (after < 0) {
+            throw new BusinessException("积分不足");
+        }
+        account.setBalance(after);
+        pointsAccountRepository.save(account);
+        return saveTransaction(customerId, type, amount, before, after, orderId, remark, actorType, actorId, actorName);
+    }
+
+    private PointsAccount requireAccount(Long customerId) {
+        return pointsAccountRepository.findByCustomerId(customerId)
+                .orElseThrow(() -> new BusinessException("积分账户不存在"));
+    }
+
+    private PointsTransaction saveTransaction(Long customerId, PointsTransactionType type, int amount,
+                                              int balanceBefore, int balanceAfter, Long orderId, String remark,
+                                              PointsActorType actorType, Long actorId, String actorName) {
+        CustomerUser customer = customerUserRepository.findById(customerId)
+                .orElseThrow(() -> new BusinessException("客户不存在"));
         PointsTransaction transaction = new PointsTransaction();
         transaction.setCustomerId(customerId);
-        transaction.setType(PointsTransactionType.ADMIN_INIT);
+        transaction.setCustomerName(customer.getName());
+        transaction.setCustomerPhone(customer.getPhone());
+        transaction.setCustomerIdCardNo(customer.getIdCardNo());
+        transaction.setType(type);
         transaction.setAmount(amount);
-        transaction.setBalanceAfter(amount);
+        transaction.setBalanceBefore(balanceBefore);
+        transaction.setBalanceAfter(balanceAfter);
+        transaction.setActorType(actorType);
+        transaction.setActorId(actorId);
+        transaction.setActorName(actorName);
+        transaction.setOrderId(orderId);
         transaction.setRemark(remark);
-        pointsTransactionRepository.save(transaction);
+        return pointsTransactionRepository.save(transaction);
     }
 }

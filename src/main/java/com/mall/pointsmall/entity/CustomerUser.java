@@ -9,8 +9,6 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.time.LocalDateTime;
-
 @Getter
 @Setter
 @Entity
@@ -30,9 +28,5 @@ public class CustomerUser extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private UserStatus status = UserStatus.PENDING_APPROVAL;
-
-    private LocalDateTime approvedAt;
-
-    private Long approvedBy;
+    private UserStatus status = UserStatus.ACTIVE;
 }

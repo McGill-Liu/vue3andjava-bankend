@@ -9,45 +9,53 @@ import java.util.Map;
 
 public class AdminDtos {
     @Data
-    public static class ApproveUserRequest {
+    public static class CustomerCreateRequest {
+        @NotBlank(message = "姓名不能为空")
+        private String name;
+
+        @NotBlank(message = "手机号不能为空")
+        private String phone;
+
+        @NotBlank(message = "身份证号不能为空")
+        private String idCardNo;
+
         @NotNull(message = "初始积分不能为空")
         @Min(value = 0, message = "初始积分不能小于 0")
         private Integer initialPoints;
     }
 
     @Data
-    public static class UpdatePhoneRequest {
+    public static class CustomerUpdateRequest {
+        @NotBlank(message = "姓名不能为空")
+        private String name;
+
         @NotBlank(message = "手机号不能为空")
         private String phone;
-    }
 
-    @Data
-    public static class UpdateIdCardRequest {
         @NotBlank(message = "身份证号不能为空")
         private String idCardNo;
-    }
 
-    @Data
-    public static class UpdatePasswordRequest {
-        @NotBlank(message = "密码不能为空")
-        private String password;
-    }
-
-    @Data
-    public static class UpdateStatusRequest {
         @NotBlank(message = "状态不能为空")
         private String status;
     }
 
     @Data
-    public static class PointsAdjustmentRequest {
-        @NotNull(message = "用户不能为空")
-        private Long customerId;
-
-        @NotNull(message = "积分不能为空")
-        private Integer amount;
+    public static class CustomerBalanceRequest {
+        @NotNull(message = "目标积分不能为空")
+        @Min(value = 0, message = "目标积分不能小于 0")
+        private Integer targetBalance;
 
         private String remark;
+    }
+
+    @Data
+    public static class CustomerResponse {
+        private Long id;
+        private String name;
+        private String phone;
+        private String idCardNo;
+        private String status;
+        private Integer pointsBalance;
     }
 
     @Data

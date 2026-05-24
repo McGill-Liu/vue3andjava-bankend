@@ -24,36 +24,22 @@ public class AuthService {
     private final JwtTokenProvider tokenProvider;
     private final AdminPermissionService adminPermissionService;
     private final PointsAccountRepository pointsAccountRepository;
+    private final CustomerSessionService customerSessionService;
 
     public AuthService(AdminUserRepository adminUserRepository,
                        CustomerUserRepository customerUserRepository,
                        PasswordEncoder passwordEncoder,
                        JwtTokenProvider tokenProvider,
                        AdminPermissionService adminPermissionService,
-                       PointsAccountRepository pointsAccountRepository) {
+                       PointsAccountRepository pointsAccountRepository,
+                       CustomerSessionService customerSessionService) {
         this.adminUserRepository = adminUserRepository;
         this.customerUserRepository = customerUserRepository;
         this.passwordEncoder = passwordEncoder;
         this.tokenProvider = tokenProvider;
         this.adminPermissionService = adminPermissionService;
         this.pointsAccountRepository = pointsAccountRepository;
-    }
-
-    @Transactional
-    public void register(AuthDtos.RegisterRequest request) {
-        if (customerUserRepository.existsByPhone(request.getPhone())) {
-            throw new BusinessException("手机号已注册");
-        }
-        if (customerUserRepository.existsByIdCardNo(request.getIdCardNo())) {
-            throw new BusinessException("身份证号已注册");
-        }
-
-        CustomerUser user = new CustomerUser();
-        user.setName(request.getName());
-        user.setPhone(request.getPhone());
-        user.setIdCardNo(request.getIdCardNo());
-        user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
-        customerUserRepository.save(user);
+        this.customerSessionService = customerSessionService;
     }
 
     public AuthDtos.TokenResponse loginUser(AuthDtos.LoginRequest request) {
@@ -62,13 +48,17 @@ public class AuthService {
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             throw new BusinessException("账号或密码错误");
         }
-        if (user.getStatus() == UserStatus.PENDING_APPROVAL) {
-            throw new BusinessException("账号待审核");
-        }
         if (user.getStatus() != UserStatus.ACTIVE) {
             throw new BusinessException("账号不可用");
         }
-        return buildToken(new SecurityUser(user.getId(), user.getName(), user.getPhone(), RoleType.CUSTOMER, null));
+        SecurityUser principal = new SecurityUser(user.getId(), user.getName(), user.getPhone(), RoleType.CUSTOMER, null);
+        String sessionId = customerSessionService.create(user.getId());
+        AuthDtos.TokenResponse response = baseResponse(principal);
+        response.setAccessToken(tokenProvider.generateCustomerAccessToken(principal, sessionId));
+        response.setRefreshToken(null);
+        response.setIdCardNo(user.getIdCardNo());
+        response.setPointsBalance(pointsAccountRepository.findByCustomerId(user.getId()).map(PointsAccount::getBalance).orElse(0));
+        return response;
     }
 
     public AuthDtos.TokenResponse loginAdmin(AuthDtos.AdminLoginRequest request) {
@@ -77,56 +67,33 @@ public class AuthService {
         if (!user.isEnabled() || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             throw new BusinessException("账号或密码错误");
         }
-        return buildToken(new SecurityUser(
-                user.getId(),
-                user.getName(),
-                null,
-                user.getRole(),
-                adminPermissionService.resolvedPermissions(user)
-        ));
+        SecurityUser principal = new SecurityUser(
+                user.getId(), user.getName(), null, user.getRole(), adminPermissionService.resolvedPermissions(user));
+        return adminTokens(principal);
     }
 
     public AuthDtos.TokenResponse refresh(AuthDtos.RefreshRequest request) {
         SecurityUser user = tokenProvider.parse(request.getRefreshToken());
-        if (!"refresh".equals(tokenProvider.tokenType(request.getRefreshToken()))) {
+        if (!"refresh".equals(tokenProvider.tokenType(request.getRefreshToken())) || user.getRole() == RoleType.CUSTOMER) {
             throw new BusinessException("refresh token 无效");
         }
-        return buildToken(user);
-    }
-
-    @Transactional
-    public void resetPassword(AuthDtos.ResetPasswordRequest request) {
-        CustomerUser user = customerUserRepository.findByPhoneAndNameAndIdCardNo(
-                        request.getPhone(), request.getName(), request.getIdCardNo())
-                .orElseThrow(() -> new BusinessException("信息校验失败，请联系管理员"));
-        String suffix = request.getIdCardNo().substring(Math.max(0, request.getIdCardNo().length() - 6));
-        user.setPasswordHash(passwordEncoder.encode(suffix));
-        customerUserRepository.save(user);
+        return adminTokens(user);
     }
 
     @Transactional
     public void changePassword(SecurityUser currentUser, AuthDtos.ChangePasswordRequest request) {
         if (currentUser.getRole() == RoleType.CUSTOMER) {
             CustomerUser user = customerUserRepository.findById(currentUser.getId())
-                    .orElseThrow(() -> new BusinessException("用户不存在"));
-
+                    .orElseThrow(() -> new BusinessException("客户不存在"));
             if (!passwordEncoder.matches(request.getOldPassword(), user.getPasswordHash())) {
                 throw new BusinessException("原密码错误");
             }
-            if (!user.getPhone().equals(request.getPhone())) {
-                throw new BusinessException("手机号校验失败");
-            }
-            if (!user.getIdCardNo().equals(request.getIdCardNo())) {
-                throw new BusinessException("身份证号校验失败");
-            }
-
             user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
             customerUserRepository.save(user);
             return;
         }
-
         AdminUser user = adminUserRepository.findById(currentUser.getId())
-                .orElseThrow(() -> new BusinessException("管理员不存在"));
+                .orElseThrow(() -> new BusinessException("员工不存在"));
         if (!passwordEncoder.matches(request.getOldPassword(), user.getPasswordHash())) {
             throw new BusinessException("原密码错误");
         }
@@ -134,24 +101,27 @@ public class AuthService {
         adminUserRepository.save(user);
     }
 
-    private AuthDtos.TokenResponse buildToken(SecurityUser user) {
+    public void logout(SecurityUser currentUser) {
+        if (currentUser.getRole() == RoleType.CUSTOMER) {
+            customerSessionService.logout(currentUser.getId());
+        }
+    }
+
+    private AuthDtos.TokenResponse adminTokens(SecurityUser user) {
+        AuthDtos.TokenResponse response = baseResponse(user);
+        response.setAccessToken(tokenProvider.generateAccessToken(user));
+        response.setRefreshToken(tokenProvider.generateRefreshToken(user));
+        adminUserRepository.findById(user.getId()).ifPresent(admin -> response.setEmail(admin.getEmail()));
+        return response;
+    }
+
+    private AuthDtos.TokenResponse baseResponse(SecurityUser user) {
         AuthDtos.TokenResponse response = new AuthDtos.TokenResponse();
         response.setUserId(user.getId());
         response.setName(user.getName());
         response.setPhone(user.getPhone());
         response.setRole(user.getRole().name());
         response.setPermissions(user.getPermissions());
-        response.setAccessToken(tokenProvider.generateAccessToken(user));
-        response.setRefreshToken(tokenProvider.generateRefreshToken(user));
-        if (user.getRole() == RoleType.CUSTOMER) {
-            customerUserRepository.findById(user.getId()).ifPresent(customer -> {
-                response.setIdCardNo(customer.getIdCardNo());
-                int balance = pointsAccountRepository.findByCustomerId(customer.getId())
-                        .map(PointsAccount::getBalance)
-                        .orElse(0);
-                response.setPointsBalance(balance);
-            });
-        }
         return response;
     }
 }

@@ -57,25 +57,27 @@ FROM product_category c
 WHERE c.name = '家居日用'
   AND NOT EXISTS (SELECT 1 FROM product WHERE name = '午休抱枕毯');
 
-INSERT INTO customer_user (name, phone, id_card_no, password_hash, status, approved_at, approved_by)
-SELECT '张三', '18800000001', '110101199001011234', '$2a$10$g7iHQSwR6sJyH0Ctzda6EO7XVv.QB94SSLSYvhgYD3JTDTuivhVQW', 'ACTIVE', NOW(), 1
+INSERT INTO product_transaction (
+  product_id, product_name, type, quantity_change, stock_before, stock_after, actor_type, actor_name, remark
+)
+SELECT p.id, p.name, 'INITIAL_STOCK', p.stock, 0, p.stock, 'SYSTEM', '系统初始化', '初始化商品库存'
+FROM product p
+WHERE NOT EXISTS (
+  SELECT 1 FROM product_transaction t WHERE t.product_id = p.id
+);
+
+INSERT INTO customer_user (name, phone, id_card_no, password_hash, status)
+SELECT '张三', '18800000001', '110101199001011234', '$2a$10$g7iHQSwR6sJyH0Ctzda6EO7XVv.QB94SSLSYvhgYD3JTDTuivhVQW', 'ACTIVE'
 FROM DUAL
 WHERE NOT EXISTS (
   SELECT 1 FROM customer_user WHERE phone = '18800000001'
 );
 
-INSERT INTO customer_user (name, phone, id_card_no, password_hash, status, approved_at, approved_by)
-SELECT '李四', '18800000002', '110101199202023456', '$2a$10$BnYA82ZIXIetBIM/kKIpuOMJhgbCNRLE2rkBczwScjnAEtTieUYzi', 'ACTIVE', NOW(), 1
+INSERT INTO customer_user (name, phone, id_card_no, password_hash, status)
+SELECT '李四', '18800000002', '110101199202023456', '$2a$10$BnYA82ZIXIetBIM/kKIpuOMJhgbCNRLE2rkBczwScjnAEtTieUYzi', 'ACTIVE'
 FROM DUAL
 WHERE NOT EXISTS (
   SELECT 1 FROM customer_user WHERE phone = '18800000002'
-);
-
-INSERT INTO customer_user (name, phone, id_card_no, password_hash, status)
-SELECT '王五', '18800000003', '110101199303037890', '$2a$10$g7iHQSwR6sJyH0Ctzda6EO7XVv.QB94SSLSYvhgYD3JTDTuivhVQW', 'PENDING_APPROVAL'
-FROM DUAL
-WHERE NOT EXISTS (
-  SELECT 1 FROM customer_user WHERE phone = '18800000003'
 );
 
 INSERT INTO points_account (customer_id, balance)
@@ -90,8 +92,8 @@ FROM customer_user u
 WHERE u.phone = '18800000002'
   AND NOT EXISTS (SELECT 1 FROM points_account p WHERE p.customer_id = u.id);
 
-INSERT INTO points_transaction (customer_id, type, amount, balance_after, remark)
-SELECT u.id, 'ADMIN_INIT', 1200, 1200, '初始化积分'
+INSERT INTO points_transaction (customer_id, type, amount, balance_before, balance_after, customer_name, customer_phone, customer_id_card_no, actor_type, actor_id, actor_name, remark)
+SELECT u.id, 'ADMIN_INIT', 1200, 0, 1200, u.name, u.phone, u.id_card_no, 'ADMIN', 1, '超级管理员', '新增客户初始化积分'
 FROM customer_user u
 WHERE u.phone = '18800000001'
   AND NOT EXISTS (
@@ -99,8 +101,8 @@ WHERE u.phone = '18800000001'
     WHERE t.customer_id = u.id AND t.type = 'ADMIN_INIT'
   );
 
-INSERT INTO points_transaction (customer_id, type, amount, balance_after, remark)
-SELECT u.id, 'ADMIN_INIT', 860, 860, '初始化积分'
+INSERT INTO points_transaction (customer_id, type, amount, balance_before, balance_after, customer_name, customer_phone, customer_id_card_no, actor_type, actor_id, actor_name, remark)
+SELECT u.id, 'ADMIN_INIT', 860, 0, 860, u.name, u.phone, u.id_card_no, 'ADMIN', 1, '超级管理员', '新增客户初始化积分'
 FROM customer_user u
 WHERE u.phone = '18800000002'
   AND NOT EXISTS (
@@ -127,10 +129,10 @@ WHERE u.phone = '18800000002'
   );
 
 INSERT INTO order_main (
-  order_no, customer_id, customer_name, customer_phone, total_points, status,
+  order_no, customer_id, customer_name, customer_phone, customer_id_card_no, total_points, balance_before, balance_after, status,
   recipient_name, recipient_phone, recipient_address, shipping_company, shipping_no, shipped_at
 )
-SELECT 'PM202603270001', u.id, '张三', '18800000001', 399, 'SHIPPED',
+SELECT 'PM202603270001', u.id, '张三', '18800000001', u.id_card_no, 399, 1599, 1200, 'SHIPPED',
        '张三', '18800000001', '张江高科博云路 88 号',
        '顺丰', 'SF202603270001', NOW()
 FROM customer_user u
@@ -138,10 +140,10 @@ WHERE u.phone = '18800000001'
   AND NOT EXISTS (SELECT 1 FROM order_main WHERE order_no = 'PM202603270001');
 
 INSERT INTO order_main (
-  order_no, customer_id, customer_name, customer_phone, total_points, status,
+  order_no, customer_id, customer_name, customer_phone, customer_id_card_no, total_points, balance_before, balance_after, status,
   recipient_name, recipient_phone, recipient_address
 )
-SELECT 'PM202603270002', u.id, '李四', '18800000002', 169, 'PENDING_SHIPMENT',
+SELECT 'PM202603270002', u.id, '李四', '18800000002', u.id_card_no, 169, 1029, 860, 'PENDING_SHIPMENT',
        '李四', '18800000002', '文三路 188 号 2 幢 1201'
 FROM customer_user u
 WHERE u.phone = '18800000002'

@@ -19,12 +19,6 @@ public class AuthController {
         this.authService = authService;
     }
 
-    @PostMapping("/user/register")
-    public ApiResponse<Void> register(@Valid @RequestBody AuthDtos.RegisterRequest request) {
-        authService.register(request);
-        return ApiResponse.ok("注册成功，等待审核", null);
-    }
-
     @PostMapping("/user/login")
     public ApiResponse<AuthDtos.TokenResponse> userLogin(@Valid @RequestBody AuthDtos.LoginRequest request) {
         return ApiResponse.ok(authService.loginUser(request));
@@ -33,12 +27,6 @@ public class AuthController {
     @PostMapping("/admin/login")
     public ApiResponse<AuthDtos.TokenResponse> adminLogin(@Valid @RequestBody AuthDtos.AdminLoginRequest request) {
         return ApiResponse.ok(authService.loginAdmin(request));
-    }
-
-    @PostMapping("/user/reset-password")
-    public ApiResponse<Void> resetPassword(@Valid @RequestBody AuthDtos.ResetPasswordRequest request) {
-        authService.resetPassword(request);
-        return ApiResponse.ok("密码已重置", null);
     }
 
     @PostMapping("/refresh")
@@ -54,6 +42,7 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ApiResponse<Void> logout() {
+        authService.logout(SecurityUtils.currentUser());
         return ApiResponse.ok("已退出登录", null);
     }
 }

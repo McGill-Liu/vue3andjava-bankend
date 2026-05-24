@@ -17,9 +17,7 @@ CREATE TABLE IF NOT EXISTS points_mall.customer_user (
   phone VARCHAR(20) NOT NULL UNIQUE,
   id_card_no VARCHAR(64) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
-  status VARCHAR(20) NOT NULL,
-  approved_at DATETIME NULL,
-  approved_by BIGINT NULL
+  status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'
 );
 
 CREATE TABLE IF NOT EXISTS points_mall.customer_address (
@@ -68,6 +66,25 @@ CREATE TABLE IF NOT EXISTS points_mall.points_account (
   balance INT NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS points_mall.product_transaction (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  product_id BIGINT NOT NULL,
+  product_name VARCHAR(150) NOT NULL,
+  type VARCHAR(24) NOT NULL,
+  quantity_change INT NOT NULL,
+  stock_before INT NOT NULL,
+  stock_after INT NOT NULL,
+  order_id BIGINT NULL,
+  actor_type VARCHAR(20) NOT NULL,
+  actor_id BIGINT NULL,
+  actor_name VARCHAR(100) NOT NULL,
+  remark VARCHAR(255) NULL,
+  KEY idx_product_transaction_product_id (product_id),
+  KEY idx_product_transaction_order_id (order_id)
+);
+
 CREATE TABLE IF NOT EXISTS points_mall.points_transaction (
   id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -75,7 +92,14 @@ CREATE TABLE IF NOT EXISTS points_mall.points_transaction (
   customer_id BIGINT NOT NULL,
   type VARCHAR(20) NOT NULL,
   amount INT NOT NULL,
+  balance_before INT NOT NULL,
   balance_after INT NOT NULL,
+  customer_name VARCHAR(100) NOT NULL,
+  customer_phone VARCHAR(20) NOT NULL,
+  customer_id_card_no VARCHAR(64) NOT NULL,
+  actor_type VARCHAR(20) NOT NULL,
+  actor_id BIGINT NULL,
+  actor_name VARCHAR(100) NOT NULL,
   order_id BIGINT NULL,
   remark VARCHAR(255) NULL,
   KEY idx_points_transaction_customer_id (customer_id),
@@ -90,7 +114,10 @@ CREATE TABLE IF NOT EXISTS points_mall.order_main (
   customer_id BIGINT NOT NULL,
   customer_name VARCHAR(100) NOT NULL,
   customer_phone VARCHAR(20) NOT NULL,
+  customer_id_card_no VARCHAR(64) NOT NULL,
   total_points INT NOT NULL,
+  balance_before INT NOT NULL,
+  balance_after INT NOT NULL,
   status VARCHAR(20) NOT NULL,
   recipient_name VARCHAR(100) NOT NULL,
   recipient_phone VARCHAR(20) NOT NULL,
@@ -181,3 +208,12 @@ WHERE c.name = '生活用品'
   AND NOT EXISTS (
     SELECT 1 FROM points_mall.product WHERE name = '品牌保温杯'
   );
+
+INSERT INTO points_mall.product_transaction (
+  product_id, product_name, type, quantity_change, stock_before, stock_after, actor_type, actor_name, remark
+)
+SELECT p.id, p.name, 'INITIAL_STOCK', p.stock, 0, p.stock, 'SYSTEM', '系统初始化', '初始化商品库存'
+FROM points_mall.product p
+WHERE NOT EXISTS (
+  SELECT 1 FROM points_mall.product_transaction t WHERE t.product_id = p.id
+);

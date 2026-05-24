@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface PointsTransactionRepository extends JpaRepository<PointsTransaction, Long> {
     List<PointsTransaction> findByCustomerIdOrderByCreatedAtDesc(Long customerId);
+    List<PointsTransaction> findAllByOrderByCreatedAtDesc();
 }

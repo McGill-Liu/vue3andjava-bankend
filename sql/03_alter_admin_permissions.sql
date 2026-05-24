@@ -6,10 +6,10 @@ ALTER TABLE admin_user
 UPDATE admin_user
 SET permissions_json = JSON_OBJECT(
   'NOTIFICATIONS', 'EDIT',
-  'APPROVALS', 'EDIT',
   'USERS', 'EDIT',
   'POINTS', 'EDIT',
   'PRODUCTS', 'EDIT',
+  'PRODUCT_TRANSACTIONS', 'VIEW',
   'ORDERS', 'EDIT',
   'ADMINS', 'EDIT'
 )
@@ -22,6 +22,7 @@ SET permissions_json = JSON_OBJECT(
   'USERS', 'VIEW',
   'POINTS', 'VIEW',
   'PRODUCTS', 'EDIT',
+  'PRODUCT_TRANSACTIONS', 'VIEW',
   'ORDERS', 'EDIT'
 )
 WHERE role = 'OPERATOR'

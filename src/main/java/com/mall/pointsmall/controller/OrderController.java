@@ -68,6 +68,12 @@ public class OrderController {
         return ApiResponse.ok("订单已完成", null);
     }
 
+    @PostMapping("/orders/{id}/cancel")
+    public ApiResponse<Integer> customerCancel(@PathVariable Long id) {
+        int balance = orderService.customerCancel(id, SecurityUtils.currentUser().getId());
+        return ApiResponse.ok("订单已取消，积分已返还", balance);
+    }
+
     @GetMapping("/admin/orders")
     public ApiResponse<?> adminOrders() {
         adminPermissionService.assertView(SecurityUtils.currentUser(), AdminMenuKey.ORDERS);
@@ -87,10 +93,4 @@ public class OrderController {
         return ApiResponse.ok("发货成功", null);
     }
 
-    @PostMapping("/admin/orders/{id}/cancel")
-    public ApiResponse<Void> cancel(@PathVariable Long id) {
-        adminPermissionService.assertEdit(SecurityUtils.currentUser(), AdminMenuKey.ORDERS);
-        orderService.cancel(id);
-        return ApiResponse.ok("订单已取消", null);
-    }
 }

@@ -28,8 +28,17 @@ public class OrderMain extends BaseEntity {
     @Column(nullable = false)
     private String customerPhone;
 
+    @Column(nullable = false, length = 64)
+    private String customerIdCardNo;
+
     @Column(nullable = false)
     private Integer totalPoints;
+
+    @Column(nullable = false)
+    private Integer balanceBefore;
+
+    @Column(nullable = false)
+    private Integer balanceAfter;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

@@ -42,7 +42,7 @@ public class NotificationService {
     @Transactional
     public NotificationMessage createOrderCreated(OrderMain order) {
         String content = "订单号: " + order.getOrderNo() + "\n用户: " + order.getCustomerName() + "\n手机号: " + order.getCustomerPhone()
-                + "\n积分: " + order.getTotalPoints() + "\n请及时发货并同步外部积分 App 扣减。";
+                + "\n订单消耗积分: " + order.getTotalPoints() + "\n请及时发货并同步外部积分 App 扣减。";
         NotificationMessage message = new NotificationMessage();
         message.setOrderId(order.getId());
         message.setCustomerId(order.getCustomerId());
@@ -55,14 +55,16 @@ public class NotificationService {
     }
 
     @Transactional
-    public NotificationMessage createOrderCancelled(OrderMain order) {
+    public NotificationMessage createOrderCancelled(OrderMain order, boolean automatic, int balanceAfterRefund) {
+        String cancellation = automatic ? "系统自动取消" : "客户手动取消";
         String content = "订单号: " + order.getOrderNo() + "\n用户: " + order.getCustomerName() + "\n手机号: " + order.getCustomerPhone()
-                + "\n积分返还: " + order.getTotalPoints() + "\n请同步外部积分 App 回加积分。";
+                + "\n取消方式: " + cancellation + "\n积分返还: " + order.getTotalPoints()
+                + "\n返还后余额: " + balanceAfterRefund + "\n请同步外部积分 App 回加积分。";
         NotificationMessage message = new NotificationMessage();
         message.setOrderId(order.getId());
         message.setCustomerId(order.getCustomerId());
         message.setType(NotificationType.ORDER_CANCELLED);
-        message.setTitle("订单取消待回积分");
+        message.setTitle(cancellation + "待回积分");
         message.setContent(content);
         NotificationMessage saved = notificationRepository.save(message);
         sendMail("积分商城订单取消待处理", content);

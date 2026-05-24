@@ -1,7 +1,7 @@
 package com.mall.pointsmall.entity;
 
 import com.mall.pointsmall.enums.PointsActorType;
-import com.mall.pointsmall.enums.PointsTransactionType;
+import com.mall.pointsmall.enums.ProductTransactionType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -13,32 +13,28 @@ import lombok.Setter;
 @Getter
 @Setter
 @Entity
-@Table(name = "points_transaction")
-public class PointsTransaction extends BaseEntity {
+@Table(name = "product_transaction")
+public class ProductTransaction extends BaseEntity {
     @Column(nullable = false)
-    private Long customerId;
+    private Long productId;
+
+    @Column(nullable = false)
+    private String productName;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private PointsTransactionType type;
+    @Column(nullable = false, length = 24)
+    private ProductTransactionType type;
 
     @Column(nullable = false)
-    private Integer amount;
+    private Integer quantityChange;
 
     @Column(nullable = false)
-    private Integer balanceBefore;
+    private Integer stockBefore;
 
     @Column(nullable = false)
-    private Integer balanceAfter;
+    private Integer stockAfter;
 
-    @Column(nullable = false)
-    private String customerName;
-
-    @Column(nullable = false, length = 20)
-    private String customerPhone;
-
-    @Column(nullable = false, length = 64)
-    private String customerIdCardNo;
+    private Long orderId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -48,8 +44,6 @@ public class PointsTransaction extends BaseEntity {
 
     @Column(nullable = false)
     private String actorName;
-
-    private Long orderId;
 
     private String remark;
 }

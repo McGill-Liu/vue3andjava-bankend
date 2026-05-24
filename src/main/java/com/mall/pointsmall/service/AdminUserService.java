@@ -6,7 +6,6 @@ import com.mall.pointsmall.enums.RoleType;
 import com.mall.pointsmall.exception.BusinessException;
 import com.mall.pointsmall.repository.AdminUserRepository;
 import jakarta.transaction.Transactional;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -27,13 +26,11 @@ public class AdminUserService {
         this.adminPermissionService = adminPermissionService;
     }
 
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
     public List<AdminDtos.AdminResponse> list() {
         return adminUserRepository.findAll().stream().map(this::toResponse).toList();
     }
 
     @Transactional
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
     public AdminDtos.AdminResponse create(AdminDtos.AdminCreateRequest request) {
         if (adminUserRepository.existsByName(request.getName())) {
             throw new BusinessException("管理员名称已存在");
@@ -50,7 +47,6 @@ public class AdminUserService {
     }
 
     @Transactional
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
     public AdminDtos.AdminResponse update(Long id, AdminDtos.AdminUpdateRequest request) {
         AdminUser adminUser = adminUserRepository.findById(id).orElseThrow(() -> new BusinessException("管理员不存在"));
         if (adminUser.getRole() == RoleType.SUPER_ADMIN) {
@@ -68,7 +64,6 @@ public class AdminUserService {
     }
 
     @Transactional
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
     public void updateStatus(Long id, boolean enabled) {
         AdminUser adminUser = adminUserRepository.findById(id).orElseThrow(() -> new BusinessException("管理员不存在"));
         adminUser.setEnabled(enabled);
@@ -76,7 +71,6 @@ public class AdminUserService {
     }
 
     @Transactional
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
     public void resetPassword(Long id, String password) {
         AdminUser adminUser = adminUserRepository.findById(id).orElseThrow(() -> new BusinessException("管理员不存在"));
         adminUser.setPasswordHash(passwordEncoder.encode(password));

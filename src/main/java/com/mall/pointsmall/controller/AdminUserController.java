@@ -7,10 +7,16 @@ import com.mall.pointsmall.security.SecurityUtils;
 import com.mall.pointsmall.service.AdminPermissionService;
 import com.mall.pointsmall.service.CustomerUserService;
 import jakarta.validation.Valid;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/admin")
+@RequestMapping("/api/admin/users")
 public class AdminUserController {
     private final CustomerUserService customerUserService;
     private final AdminPermissionService adminPermissionService;
@@ -20,60 +26,40 @@ public class AdminUserController {
         this.adminPermissionService = adminPermissionService;
     }
 
-    @GetMapping("/user-approvals")
-    public ApiResponse<?> approvals() {
-        adminPermissionService.assertView(SecurityUtils.currentUser(), AdminMenuKey.APPROVALS);
-        return ApiResponse.ok(customerUserService.pendingApprovals());
-    }
-
-    @PostMapping("/user-approvals/{id}/approve")
-    public ApiResponse<Void> approve(@PathVariable Long id, @Valid @RequestBody AdminDtos.ApproveUserRequest request) {
-        adminPermissionService.assertEdit(SecurityUtils.currentUser(), AdminMenuKey.APPROVALS);
-        customerUserService.approve(id, request.getInitialPoints(), SecurityUtils.currentUser());
-        return ApiResponse.ok("审核通过", null);
-    }
-
-    @PostMapping("/user-approvals/{id}/reject")
-    public ApiResponse<Void> reject(@PathVariable Long id) {
-        adminPermissionService.assertEdit(SecurityUtils.currentUser(), AdminMenuKey.APPROVALS);
-        customerUserService.reject(id);
-        return ApiResponse.ok("已驳回", null);
-    }
-
-    @GetMapping("/users")
+    @GetMapping
     public ApiResponse<?> users() {
         adminPermissionService.assertView(SecurityUtils.currentUser(), AdminMenuKey.USERS);
         return ApiResponse.ok(customerUserService.listAll());
     }
 
-    @GetMapping("/users/{id}")
+    @GetMapping("/{id}")
     public ApiResponse<?> user(@PathVariable Long id) {
         adminPermissionService.assertView(SecurityUtils.currentUser(), AdminMenuKey.USERS);
         return ApiResponse.ok(customerUserService.getById(id));
     }
 
-    @PatchMapping("/users/{id}/phone")
-    public ApiResponse<?> updatePhone(@PathVariable Long id, @Valid @RequestBody AdminDtos.UpdatePhoneRequest request) {
+    @PostMapping
+    public ApiResponse<?> create(@Valid @RequestBody AdminDtos.CustomerCreateRequest request) {
         adminPermissionService.assertEdit(SecurityUtils.currentUser(), AdminMenuKey.USERS);
-        return ApiResponse.ok(customerUserService.updatePhone(id, request));
+        return ApiResponse.ok("客户已新增", customerUserService.create(request, SecurityUtils.currentUser()));
     }
 
-    @PatchMapping("/users/{id}/id-card")
-    public ApiResponse<?> updateIdCard(@PathVariable Long id, @Valid @RequestBody AdminDtos.UpdateIdCardRequest request) {
+    @PutMapping("/{id}")
+    public ApiResponse<?> update(@PathVariable Long id, @Valid @RequestBody AdminDtos.CustomerUpdateRequest request) {
         adminPermissionService.assertEdit(SecurityUtils.currentUser(), AdminMenuKey.USERS);
-        return ApiResponse.ok(customerUserService.updateIdCard(id, request));
+        return ApiResponse.ok("客户已更新", customerUserService.update(id, request));
     }
 
-    @PatchMapping("/users/{id}/password")
-    public ApiResponse<Void> updatePassword(@PathVariable Long id, @Valid @RequestBody AdminDtos.UpdatePasswordRequest request) {
+    @PostMapping("/{id}/reset-password")
+    public ApiResponse<Void> resetPassword(@PathVariable Long id) {
         adminPermissionService.assertEdit(SecurityUtils.currentUser(), AdminMenuKey.USERS);
-        customerUserService.updatePassword(id, request);
-        return ApiResponse.ok("密码已更新", null);
+        customerUserService.resetPassword(id);
+        return ApiResponse.ok("密码已重置为当前身份证号后 6 位", null);
     }
 
-    @PatchMapping("/users/{id}/status")
-    public ApiResponse<?> updateStatus(@PathVariable Long id, @Valid @RequestBody AdminDtos.UpdateStatusRequest request) {
+    @PutMapping("/{id}/points-balance")
+    public ApiResponse<?> setBalance(@PathVariable Long id, @Valid @RequestBody AdminDtos.CustomerBalanceRequest request) {
         adminPermissionService.assertEdit(SecurityUtils.currentUser(), AdminMenuKey.USERS);
-        return ApiResponse.ok(customerUserService.updateStatus(id, request));
+        return ApiResponse.ok("积分余额已调整", customerUserService.setBalance(id, request, SecurityUtils.currentUser()));
     }
 }
