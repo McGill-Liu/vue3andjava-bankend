@@ -47,10 +47,12 @@ public class AdminPermissionService {
             permissions.put(AdminMenuKey.NOTIFICATIONS.name(), MenuPermissionLevel.EDIT.name());
             permissions.put(AdminMenuKey.USERS.name(), MenuPermissionLevel.EDIT.name());
             permissions.put(AdminMenuKey.POINTS.name(), MenuPermissionLevel.EDIT.name());
+            permissions.put(AdminMenuKey.PRODUCT_CATEGORIES.name(), MenuPermissionLevel.EDIT.name());
             permissions.put(AdminMenuKey.PRODUCTS.name(), MenuPermissionLevel.EDIT.name());
             permissions.put(AdminMenuKey.PRODUCT_TRANSACTIONS.name(), MenuPermissionLevel.VIEW.name());
             permissions.put(AdminMenuKey.ORDERS.name(), MenuPermissionLevel.EDIT.name());
             permissions.put(AdminMenuKey.ADMINS.name(), MenuPermissionLevel.EDIT.name());
+            permissions.put(AdminMenuKey.OPERATION_RECORDS.name(), MenuPermissionLevel.EDIT.name());
             return permissions;
         }
         permissions.put(AdminMenuKey.NOTIFICATIONS.name(), MenuPermissionLevel.EDIT.name());
@@ -77,7 +79,7 @@ public class AdminPermissionService {
         Map<String, String> normalized = new LinkedHashMap<>();
         for (AdminMenuKey key : AdminMenuKey.values()) {
             String raw = incoming == null ? null : incoming.get(key.name());
-            MenuPermissionLevel level = raw == null ? MenuPermissionLevel.NONE : MenuPermissionLevel.valueOf(raw);
+            MenuPermissionLevel level = permissionLevel(raw);
             if (level != MenuPermissionLevel.NONE) {
                 normalized.put(key.name(), level.name());
             }
@@ -98,10 +100,21 @@ public class AdminPermissionService {
             return;
         }
         String raw = user.getPermissions() == null ? null : user.getPermissions().get(menuKey.name());
-        MenuPermissionLevel actual = raw == null ? MenuPermissionLevel.NONE : MenuPermissionLevel.valueOf(raw);
+        MenuPermissionLevel actual = permissionLevel(raw);
         boolean allowed = actual == MenuPermissionLevel.EDIT || (required == MenuPermissionLevel.VIEW && actual == MenuPermissionLevel.VIEW);
         if (!allowed) {
             throw new BusinessException("没有权限访问该菜单");
+        }
+    }
+
+    private MenuPermissionLevel permissionLevel(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return MenuPermissionLevel.NONE;
+        }
+        try {
+            return MenuPermissionLevel.valueOf(raw);
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException("管理员权限配置不正确");
         }
     }
 }

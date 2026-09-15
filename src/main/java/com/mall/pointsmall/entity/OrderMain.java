@@ -1,11 +1,13 @@
 package com.mall.pointsmall.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.mall.pointsmall.enums.OrderStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -14,13 +16,19 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @Entity
-@Table(name = "order_main")
+@Table(name = "order_main", uniqueConstraints = @UniqueConstraint(
+        name = "uk_order_customer_checkout_token",
+        columnNames = {"customer_id", "checkout_token"}))
 public class OrderMain extends BaseEntity {
     @Column(nullable = false, unique = true)
     private String orderNo;
 
     @Column(nullable = false)
     private Long customerId;
+
+    @JsonIgnore
+    @Column(length = 64)
+    private String checkoutToken;
 
     @Column(nullable = false)
     private String customerName;

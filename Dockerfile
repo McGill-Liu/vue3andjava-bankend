@@ -4,10 +4,12 @@ WORKDIR /app
 COPY pom.xml .
 COPY src ./src
 
-RUN mvn clean package -DskipTests
+RUN mvn clean verify
 
 FROM eclipse-temurin:17-jre
 WORKDIR /app
+
+ENV SPRING_PROFILES_ACTIVE=prod
 
 COPY --from=builder /app/target/*.jar app.jar
 

@@ -9,10 +9,12 @@ import com.mall.pointsmall.repository.ProductCategoryRepository;
 import com.mall.pointsmall.repository.ProductRepository;
 import com.mall.pointsmall.service.AdminPermissionService;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 @Component
+@Profile("dev")
 public class DataInitializer implements CommandLineRunner {
     private final AdminUserRepository adminUserRepository;
     private final ProductCategoryRepository categoryRepository;

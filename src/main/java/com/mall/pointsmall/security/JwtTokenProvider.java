@@ -30,16 +30,16 @@ public class JwtTokenProvider {
         this.refreshTokenSeconds = refreshTokenSeconds;
     }
 
-    public String generateAccessToken(SecurityUser user) {
-        return buildToken(user, accessTokenSeconds, "access", null);
+    public String generateAccessToken(SecurityUser user, String sessionId) {
+        return buildToken(user, accessTokenSeconds, "access", sessionId);
     }
 
     public String generateCustomerAccessToken(SecurityUser user, String sessionId) {
         return buildToken(user, customerAccessTokenSeconds, "access", sessionId);
     }
 
-    public String generateRefreshToken(SecurityUser user) {
-        return buildToken(user, refreshTokenSeconds, "refresh", null);
+    public String generateRefreshToken(SecurityUser user, String sessionId) {
+        return buildToken(user, refreshTokenSeconds, "refresh", sessionId);
     }
 
     public SecurityUser parse(String token) {
@@ -49,7 +49,8 @@ public class JwtTokenProvider {
                 claims.get("name", String.class),
                 claims.get("phone", String.class),
                 RoleType.valueOf(claims.get("role", String.class)),
-                claims.get("permissions", Map.class)
+                claims.get("permissions", Map.class),
+                Boolean.TRUE.equals(claims.get("passwordChangeRequired", Boolean.class))
         );
     }
 
@@ -73,6 +74,7 @@ public class JwtTokenProvider {
                 .claim("phone", user.getPhone())
                 .claim("role", user.getRole().name())
                 .claim("permissions", user.getPermissions())
+                .claim("passwordChangeRequired", user.isPasswordChangeRequired())
                 .claim("tokenType", type)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(seconds)));

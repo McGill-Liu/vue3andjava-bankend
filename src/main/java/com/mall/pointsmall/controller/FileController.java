@@ -1,7 +1,10 @@
 package com.mall.pointsmall.controller;
 
 import com.mall.pointsmall.common.ApiResponse;
+import com.mall.pointsmall.enums.AdminMenuKey;
 import com.mall.pointsmall.exception.BusinessException;
+import com.mall.pointsmall.security.SecurityUtils;
+import com.mall.pointsmall.service.AdminPermissionService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
@@ -15,9 +18,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -27,17 +34,22 @@ import java.util.UUID;
 @RequestMapping("/api/files")
 public class FileController {
     private static final long MAX_IMAGE_BYTES = 10 * 1024 * 1024L;
+    private static final long MAX_IMAGE_PIXELS = 40_000_000L;
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of("jpg", "jpeg", "png");
 
     private final Path uploadDirectory;
+    private final AdminPermissionService adminPermissionService;
 
-    public FileController(@Value("${app.upload.directory:uploads}") String directory) throws IOException {
+    public FileController(@Value("${app.upload.directory:uploads}") String directory,
+                          AdminPermissionService adminPermissionService) throws IOException {
         this.uploadDirectory = Path.of(directory).toAbsolutePath().normalize();
+        this.adminPermissionService = adminPermissionService;
         Files.createDirectories(uploadDirectory);
     }
 
     @PostMapping("/images")
     public ApiResponse<?> uploadImage(@RequestParam("file") MultipartFile file) {
+        adminPermissionService.assertEdit(SecurityUtils.currentUser(), AdminMenuKey.PRODUCTS);
         if (file.isEmpty()) {
             throw new BusinessException("请选择图片");
         }
@@ -52,6 +64,7 @@ public class FileController {
         if (!contentType.equals("image/jpeg") && !contentType.equals("image/png")) {
             throw new BusinessException("图片格式不正确");
         }
+        validateImageContent(file, extension);
         String filename = UUID.randomUUID() + "." + extension;
         try {
             file.transferTo(uploadDirectory.resolve(filename));
@@ -59,6 +72,39 @@ public class FileController {
             throw new BusinessException("图片保存失败");
         }
         return ApiResponse.ok("上传成功", Map.of("url", "/api/files/content/" + filename));
+    }
+
+    private void validateImageContent(MultipartFile file, String extension) {
+        try (ImageInputStream imageInput = ImageIO.createImageInputStream(file.getInputStream())) {
+            if (imageInput == null) {
+                throw new BusinessException("图片内容无法识别");
+            }
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(imageInput);
+            if (!readers.hasNext()) {
+                throw new BusinessException("图片内容无法识别");
+            }
+            ImageReader reader = readers.next();
+            try {
+                reader.setInput(imageInput, true, true);
+                String format = reader.getFormatName().toLowerCase(Locale.ROOT);
+                boolean expectedFormat = "png".equals(extension) ? "png".equals(format)
+                        : "jpeg".equals(format) || "jpg".equals(format);
+                if (!expectedFormat) {
+                    throw new BusinessException("图片扩展名与实际格式不一致");
+                }
+                int width = reader.getWidth(0);
+                int height = reader.getHeight(0);
+                if (width <= 0 || height <= 0 || (long) width * height > MAX_IMAGE_PIXELS) {
+                    throw new BusinessException("图片尺寸过大或无效");
+                }
+            } finally {
+                reader.dispose();
+            }
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (IOException | RuntimeException ex) {
+            throw new BusinessException("图片内容无法识别");
+        }
     }
 
     @GetMapping("/content/{filename:.+}")

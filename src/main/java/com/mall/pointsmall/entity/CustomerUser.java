@@ -9,6 +9,8 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.LocalDateTime;
+
 @Getter
 @Setter
 @Entity
@@ -29,4 +31,19 @@ public class CustomerUser extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private UserStatus status = UserStatus.ACTIVE;
+
+    @Column(nullable = false)
+    private boolean mustChangePassword;
+
+    private LocalDateTime tempPasswordExpiresAt;
+
+    @Column(nullable = false)
+    private int failedLoginAttempts;
+
+    private LocalDateTime loginLockedUntil;
+
+    @Column(unique = true, length = 128)
+    private String wechatOpenId;
+
+    private LocalDateTime wechatBoundAt;
 }

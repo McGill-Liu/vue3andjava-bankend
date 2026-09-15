@@ -1,0 +1,28 @@
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/points_mall?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    password: root
+  data:
+    redis:
+      host: localhost
+  mail:
+    host: smtp.qq.com
+    port: 587
+    username: your@qq.com
+    password: replace-me
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+app:
+  upload:
+    directory: uploads
+  jwt:
+    secret: points-mall-development-only-secret-key-2026
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true

@@ -14,6 +14,8 @@ public class AuthDtos {
 
         @NotBlank(message = "密码不能为空")
         private String password;
+
+        private String wechatCode;
     }
 
     @Data
@@ -26,12 +28,18 @@ public class AuthDtos {
     }
 
     @Data
+    public static class WechatLoginRequest {
+        @NotBlank(message = "微信登录凭证不能为空")
+        private String code;
+    }
+
+    @Data
     public static class ChangePasswordRequest {
         @NotBlank(message = "原密码不能为空")
         private String oldPassword;
 
         @NotBlank(message = "新密码不能为空")
-        @Pattern(regexp = "^[A-Za-z0-9]{6,}$", message = "新密码至少 6 位，且只能包含数字和英文字母")
+        @Pattern(regexp = "^[A-Za-z0-9]{6,18}$", message = "新密码为 6-18 位，只能包含数字和英文字母")
         private String newPassword;
     }
 
@@ -53,5 +61,6 @@ public class AuthDtos {
         private Map<String, String> permissions;
         private String accessToken;
         private String refreshToken;
+        private boolean mustChangePassword;
     }
 }

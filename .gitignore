@@ -2,3 +2,7 @@ target/
 .idea/
 *.iml
 .mvn/
+.env
+.env.*
+!.env.production.example
+uploads/

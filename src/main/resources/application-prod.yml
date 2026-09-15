@@ -1,0 +1,20 @@
+server:
+  max-http-request-header-size: 16KB
+  tomcat:
+    max-connections: ${TOMCAT_MAX_CONNECTIONS:1000}
+    accept-count: ${TOMCAT_ACCEPT_COUNT:100}
+    connection-timeout: 10s
+    threads:
+      max: ${TOMCAT_MAX_THREADS:100}
+      min-spare: 10
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

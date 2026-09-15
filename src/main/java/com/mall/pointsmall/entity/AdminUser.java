@@ -32,5 +32,6 @@ public class AdminUser extends BaseEntity {
     private boolean enabled = true;
 
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String permissionsJson;
 }

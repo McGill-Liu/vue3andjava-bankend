@@ -3,13 +3,16 @@ package com.mall.pointsmall.controller;
 import com.mall.pointsmall.common.ApiResponse;
 import com.mall.pointsmall.dto.AdminDtos;
 import com.mall.pointsmall.dto.OrderDtos;
+import com.mall.pointsmall.entity.OrderMain;
 import com.mall.pointsmall.enums.AdminMenuKey;
 import com.mall.pointsmall.security.SecurityUtils;
 import com.mall.pointsmall.service.AddressService;
 import com.mall.pointsmall.service.AdminPermissionService;
 import com.mall.pointsmall.service.OrderService;
+import com.mall.pointsmall.service.OperationRecordService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.transaction.annotation.Transactional;
 
 @RestController
 @RequestMapping("/api")
@@ -17,13 +20,16 @@ public class OrderController {
     private final OrderService orderService;
     private final AddressService addressService;
     private final AdminPermissionService adminPermissionService;
+    private final OperationRecordService operationRecordService;
 
     public OrderController(OrderService orderService,
                            AddressService addressService,
-                           AdminPermissionService adminPermissionService) {
+                           AdminPermissionService adminPermissionService,
+                           OperationRecordService operationRecordService) {
         this.orderService = orderService;
         this.addressService = addressService;
         this.adminPermissionService = adminPermissionService;
+        this.operationRecordService = operationRecordService;
     }
 
     @GetMapping("/addresses")
@@ -52,6 +58,11 @@ public class OrderController {
         return ApiResponse.ok(orderService.checkout(SecurityUtils.currentUser().getId(), request));
     }
 
+    @PostMapping("/orders/purchase-availability")
+    public ApiResponse<?> purchaseAvailability(@Valid @RequestBody OrderDtos.PurchaseAvailabilityRequest request) {
+        return ApiResponse.ok(orderService.purchaseAvailability(SecurityUtils.currentUser().getId(), request.getProductIds()));
+    }
+
     @GetMapping("/orders")
     public ApiResponse<?> orders() {
         return ApiResponse.ok(orderService.userOrders(SecurityUtils.currentUser().getId()));
@@ -59,7 +70,7 @@ public class OrderController {
 
     @GetMapping("/orders/{id}")
     public ApiResponse<?> order(@PathVariable Long id) {
-        return ApiResponse.ok(orderService.orderItems(id));
+        return ApiResponse.ok(orderService.ownedOrderItems(id, SecurityUtils.currentUser().getId()));
     }
 
     @PostMapping("/orders/{id}/confirm")
@@ -87,9 +98,12 @@ public class OrderController {
     }
 
     @PostMapping("/admin/orders/{id}/ship")
+    @Transactional
     public ApiResponse<Void> ship(@PathVariable Long id, @Valid @RequestBody AdminDtos.ShipOrderRequest request) {
         adminPermissionService.assertEdit(SecurityUtils.currentUser(), AdminMenuKey.ORDERS);
-        orderService.ship(id, request);
+        OrderMain order = orderService.ship(id, request);
+        operationRecordService.recordSuccess("订单发货", "订单", order.getId(), order.getOrderNo(),
+                "物流公司：" + request.getShippingCompany() + "，物流单号：" + request.getShippingNo());
         return ApiResponse.ok("发货成功", null);
     }
 

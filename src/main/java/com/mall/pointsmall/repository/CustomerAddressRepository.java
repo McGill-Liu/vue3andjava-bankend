@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface CustomerAddressRepository extends JpaRepository<CustomerAddress, Long> {
     List<CustomerAddress> findByCustomerIdOrderByDefaultAddressDescCreatedAtDesc(Long customerId);
+    List<CustomerAddress> findByCustomerIdInOrderByCustomerIdAscDefaultAddressDescCreatedAtDesc(List<Long> customerIds);
 }

@@ -72,13 +72,16 @@ public class NotificationService {
     }
 
     @Transactional
-    public void process(Long id, Long processedBy) {
+    public NotificationMessage process(Long id, Long processedBy) {
         NotificationMessage message = notificationRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("通知不存在"));
+        if (message.getStatus() != NotificationStatus.UNPROCESSED) {
+            throw new BusinessException("待办事项已经处理，无需重复操作");
+        }
         message.setStatus(NotificationStatus.PROCESSED);
         message.setProcessedAt(LocalDateTime.now());
         message.setProcessedBy(processedBy);
-        notificationRepository.save(message);
+        return notificationRepository.save(message);
     }
 
     private void sendMail(String subject, String content) {

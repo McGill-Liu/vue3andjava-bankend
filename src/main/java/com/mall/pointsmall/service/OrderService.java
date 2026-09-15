@@ -20,12 +20,18 @@ import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.UUID;
 
 @Service
 public class OrderService {
+    private static final List<OrderStatus> EFFECTIVE_PURCHASE_STATUSES = List.of(
+            OrderStatus.PENDING_SHIPMENT, OrderStatus.SHIPPED, OrderStatus.COMPLETED);
+
     private final OrderMainRepository orderMainRepository;
     private final OrderItemRepository orderItemRepository;
     private final ProductRepository productRepository;
@@ -55,30 +61,68 @@ public class OrderService {
 
     @Transactional
     public OrderMain checkout(Long customerId, OrderDtos.CheckoutRequest request) {
-        CustomerUser user = customerUserRepository.findById(customerId)
+        String checkoutToken = normalizeCheckoutToken(request.getCheckoutToken());
+        TreeMap<Long, Integer> quantities = aggregateCheckoutItems(request.getItems());
+        CustomerUser user = customerUserRepository.findByIdForUpdate(customerId)
                 .orElseThrow(() -> new BusinessException("客户不存在"));
+        OrderMain existingOrder = orderMainRepository.findByCustomerIdAndCheckoutToken(customerId, checkoutToken)
+                .orElse(null);
+        if (existingOrder != null) {
+            return existingOrder;
+        }
         CustomerAddress address = addressService.getOwned(request.getAddressId(), customerId);
-        int totalPoints = 0;
-        List<Product> products = new ArrayList<>();
-        for (OrderDtos.CheckoutItem item : request.getItems()) {
-            Product product = productRepository.findById(item.getProductId())
-                    .orElseThrow(() -> new BusinessException("商品不存在"));
+        List<Product> products = productRepository.findAllByIdForUpdate(new ArrayList<>(quantities.keySet()));
+        if (products.size() != quantities.size()) {
+            throw new BusinessException("商品不存在");
+        }
+        Map<Long, Product> productsById = new HashMap<>();
+        Map<Long, Long> purchasedQuantities = effectivePurchaseTotals(customerId, new ArrayList<>(quantities.keySet()));
+        long totalPointsLong = 0;
+        for (Product product : products) {
+            int quantity = quantities.get(product.getId());
             if (!product.isEnabled()) {
                 throw new BusinessException(product.getName() + " 已下架");
             }
-            if (product.getStock() < item.getQuantity()) {
+            if (product.getPointsCost() < 0 || product.getStock() < 0) {
+                throw new BusinessException(product.getName() + " 的商品数据异常，请联系管理员");
+            }
+            if (product.getStock() < quantity) {
                 throw new BusinessException(product.getName() + " 库存不足");
             }
-            totalPoints += product.getPointsCost() * item.getQuantity();
-            products.add(product);
+            if (product.getPerOrderLimit() != null && quantity > product.getPerOrderLimit()) {
+                throw new BusinessException(product.getName() + " 每笔订单限购 " + product.getPerOrderLimit() + " 件");
+            }
+            long purchasedQuantity = purchasedQuantities.getOrDefault(product.getId(), 0L);
+            if (product.getCustomerTotalLimit() != null
+                    && purchasedQuantity + quantity > product.getCustomerTotalLimit()) {
+                long remaining = Math.max(0, product.getCustomerTotalLimit() - purchasedQuantity);
+                throw new BusinessException(product.getName() + " 每位客户累计限购 "
+                        + product.getCustomerTotalLimit() + " 件，您已购买 " + purchasedQuantity
+                        + " 件，本次最多还能购买 " + remaining + " 件");
+            }
+            totalPointsLong += (long) product.getPointsCost() * quantity;
+            if (totalPointsLong > Integer.MAX_VALUE) {
+                throw new BusinessException("订单积分总额过大");
+            }
+            productsById.put(product.getId(), product);
         }
-        int balanceBefore = pointsService.balanceOf(customerId);
+        int totalPoints = (int) totalPointsLong;
+        if (request.getExpectedTotalPoints() != null
+                && request.getExpectedTotalPoints() != totalPoints) {
+            throw new BusinessException("商品积分价已发生变化，请重新确认订单");
+        }
+        int balanceBefore = pointsService.balanceForUpdate(customerId);
+        if (request.getExpectedBalanceBefore() != null
+                && request.getExpectedBalanceBefore() != balanceBefore) {
+            throw new BusinessException("积分余额已发生变化，请重新确认订单");
+        }
         if (balanceBefore < totalPoints) {
             throw new BusinessException("积分不足");
         }
         OrderMain order = new OrderMain();
-        order.setOrderNo("PO" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS")));
+        order.setOrderNo("PO" + UUID.randomUUID().toString().replace("-", ""));
         order.setCustomerId(customerId);
+        order.setCheckoutToken(checkoutToken);
         order.setCustomerName(user.getName());
         order.setCustomerPhone(user.getPhone());
         order.setCustomerIdCardNo(user.getIdCardNo());
@@ -91,11 +135,11 @@ public class OrderService {
         OrderMain saved = orderMainRepository.save(order);
         pointsService.changeForCustomer(customerId, -totalPoints, PointsTransactionType.ORDER_DEDUCT,
                 saved.getId(), "客户兑换下单扣减积分", user.getName());
-        for (int i = 0; i < request.getItems().size(); i++) {
-            OrderDtos.CheckoutItem checkoutItem = request.getItems().get(i);
-            Product product = products.get(i);
+        for (Map.Entry<Long, Integer> entry : quantities.entrySet()) {
+            Product product = productsById.get(entry.getKey());
+            int quantity = entry.getValue();
             int stockBefore = product.getStock();
-            product.setStock(stockBefore - checkoutItem.getQuantity());
+            product.setStock(stockBefore - quantity);
             productRepository.save(product);
             productTransactionService.customerOrder(product, stockBefore, product.getStock(),
                     saved.getId(), customerId, user.getName());
@@ -106,11 +150,35 @@ public class OrderService {
             orderItem.setProductName(product.getName());
             orderItem.setProductCoverImage(product.getCoverImageUrl());
             orderItem.setPointsCost(product.getPointsCost());
-            orderItem.setQuantity(checkoutItem.getQuantity());
+            orderItem.setQuantity(quantity);
             orderItemRepository.save(orderItem);
         }
         notificationService.createOrderCreated(saved);
         return saved;
+    }
+
+    private String normalizeCheckoutToken(String checkoutToken) {
+        if (checkoutToken == null || !checkoutToken.matches("^[A-Za-z0-9_-]{16,64}$")) {
+            throw new BusinessException("订单提交标识不正确，请返回购物车后重试");
+        }
+        return checkoutToken;
+    }
+
+    public List<OrderDtos.PurchaseAvailability> purchaseAvailability(Long customerId, List<Long> requestedProductIds) {
+        List<Long> productIds = requestedProductIds.stream().distinct().sorted().toList();
+        if (productIds.stream().anyMatch(id -> id == null || id <= 0)) {
+            throw new BusinessException("商品信息不正确");
+        }
+        List<Product> products = productRepository.findAllById(productIds);
+        Map<Long, Long> totals = effectivePurchaseTotals(customerId, productIds);
+        return products.stream().map(product -> {
+            long purchasedQuantity = totals.getOrDefault(product.getId(), 0L);
+            Long remainingTotal = product.getCustomerTotalLimit() == null
+                    ? null
+                    : Math.max(0L, (long) product.getCustomerTotalLimit() - purchasedQuantity);
+            return new OrderDtos.PurchaseAvailability(product.getId(), product.getPerOrderLimit(),
+                    product.getCustomerTotalLimit(), purchasedQuantity, remainingTotal);
+        }).toList();
     }
 
     public List<OrderMain> userOrders(Long customerId) {
@@ -125,22 +193,27 @@ public class OrderService {
         return orderItemRepository.findByOrderIdOrderByIdAsc(orderId);
     }
 
+    public List<OrderItem> ownedOrderItems(Long orderId, Long customerId) {
+        ownedOrder(orderId, customerId);
+        return orderItems(orderId);
+    }
+
     @Transactional
-    public void ship(Long orderId, AdminDtos.ShipOrderRequest request) {
-        OrderMain order = getOrder(orderId);
+    public OrderMain ship(Long orderId, AdminDtos.ShipOrderRequest request) {
+        OrderMain order = getOrderForUpdate(orderId);
         if (order.getStatus() != OrderStatus.PENDING_SHIPMENT) {
             throw new BusinessException("当前订单不可发货");
         }
         order.setStatus(OrderStatus.SHIPPED);
-        order.setShippingCompany(request.getShippingCompany());
-        order.setShippingNo(request.getShippingNo());
+        order.setShippingCompany(request.getShippingCompany().trim());
+        order.setShippingNo(request.getShippingNo().trim());
         order.setShippedAt(LocalDateTime.now());
-        orderMainRepository.save(order);
+        return orderMainRepository.save(order);
     }
 
     @Transactional
     public void confirm(Long orderId, Long customerId) {
-        OrderMain order = ownedOrder(orderId, customerId);
+        OrderMain order = ownedOrderForUpdate(orderId, customerId);
         if (order.getStatus() != OrderStatus.SHIPPED) {
             throw new BusinessException("当前订单不可确认收货");
         }
@@ -151,7 +224,7 @@ public class OrderService {
 
     @Transactional
     public int customerCancel(Long orderId, Long customerId) {
-        OrderMain order = ownedOrder(orderId, customerId);
+        OrderMain order = ownedOrderForUpdate(orderId, customerId);
         if (order.getStatus() != OrderStatus.PENDING_SHIPMENT) {
             throw new BusinessException("仅待发货订单可以取消");
         }
@@ -161,18 +234,24 @@ public class OrderService {
     @Transactional
     public void autoCancelExpiredOrders() {
         LocalDateTime deadline = LocalDateTime.now().minusDays(7);
-        for (OrderMain order : orderMainRepository.findByStatusAndCreatedAtBefore(OrderStatus.PENDING_SHIPMENT, deadline)) {
-            cancelOrder(order, OrderStatus.AUTO_CANCELLED);
+        for (OrderMain candidate : orderMainRepository.findByStatusAndCreatedAtBefore(OrderStatus.PENDING_SHIPMENT, deadline)) {
+            OrderMain order = getOrderForUpdate(candidate.getId());
+            if (order.getStatus() == OrderStatus.PENDING_SHIPMENT && order.getCreatedAt().isBefore(deadline)) {
+                cancelOrder(order, OrderStatus.AUTO_CANCELLED);
+            }
         }
     }
 
     @Transactional
     public void autoCompleteShippedOrders() {
         LocalDateTime deadline = LocalDateTime.now().minusDays(7);
-        for (OrderMain order : orderMainRepository.findByStatusAndShippedAtBefore(OrderStatus.SHIPPED, deadline)) {
-            order.setStatus(OrderStatus.COMPLETED);
-            order.setCompletedAt(LocalDateTime.now());
-            orderMainRepository.save(order);
+        for (OrderMain candidate : orderMainRepository.findByStatusAndShippedAtBefore(OrderStatus.SHIPPED, deadline)) {
+            OrderMain order = getOrderForUpdate(candidate.getId());
+            if (order.getStatus() == OrderStatus.SHIPPED && order.getShippedAt() != null && order.getShippedAt().isBefore(deadline)) {
+                order.setStatus(OrderStatus.COMPLETED);
+                order.setCompletedAt(LocalDateTime.now());
+                orderMainRepository.save(order);
+            }
         }
     }
 
@@ -180,11 +259,21 @@ public class OrderService {
         order.setStatus(status);
         order.setCancelledAt(LocalDateTime.now());
         orderMainRepository.save(order);
-        for (OrderItem item : orderItemRepository.findByOrderIdOrderByIdAsc(order.getId())) {
-            Product product = productRepository.findById(item.getProductId())
-                    .orElseThrow(() -> new BusinessException("订单商品不存在"));
+        TreeMap<Long, Integer> quantities = aggregateOrderItems(orderItemRepository.findByOrderIdOrderByIdAsc(order.getId()));
+        List<Product> products = productRepository.findAllByIdForUpdate(new ArrayList<>(quantities.keySet()));
+        if (products.size() != quantities.size()) {
+            throw new BusinessException("订单商品不存在");
+        }
+        for (Product product : products) {
+            int quantity = quantities.get(product.getId());
             int stockBefore = product.getStock();
-            product.setStock(stockBefore + item.getQuantity());
+            int stockAfter;
+            try {
+                stockAfter = Math.addExact(stockBefore, quantity);
+            } catch (ArithmeticException ex) {
+                throw new BusinessException("返还库存数值过大");
+            }
+            product.setStock(stockAfter);
             productRepository.save(product);
             productTransactionService.returnOrder(product, stockBefore, product.getStock(), order.getId(),
                     status == OrderStatus.MANUAL_CANCELLED ? PointsActorType.CUSTOMER : PointsActorType.SYSTEM,
@@ -209,7 +298,66 @@ public class OrderService {
         return order;
     }
 
+    private OrderMain ownedOrderForUpdate(Long id, Long customerId) {
+        OrderMain order = getOrderForUpdate(id);
+        if (!order.getCustomerId().equals(customerId)) {
+            throw new BusinessException("无权操作该订单");
+        }
+        return order;
+    }
+
     private OrderMain getOrder(Long id) {
         return orderMainRepository.findById(id).orElseThrow(() -> new BusinessException("订单不存在"));
+    }
+
+    private OrderMain getOrderForUpdate(Long id) {
+        return orderMainRepository.findByIdForUpdate(id).orElseThrow(() -> new BusinessException("订单不存在"));
+    }
+
+    private TreeMap<Long, Integer> aggregateCheckoutItems(List<OrderDtos.CheckoutItem> items) {
+        TreeMap<Long, Integer> quantities = new TreeMap<>();
+        if (items == null || items.isEmpty() || items.size() > 50) {
+            throw new BusinessException("购物车商品数量不正确");
+        }
+        for (OrderDtos.CheckoutItem item : items) {
+            if (item == null || item.getProductId() == null || item.getQuantity() == null
+                    || item.getQuantity() < 1 || item.getQuantity() > 999) {
+                throw new BusinessException("商品数量必须在 1 到 999 之间");
+            }
+            try {
+                quantities.merge(item.getProductId(), item.getQuantity(), Math::addExact);
+            } catch (ArithmeticException ex) {
+                throw new BusinessException("商品数量过大");
+            }
+            if (quantities.get(item.getProductId()) > 999) {
+                throw new BusinessException("单件商品每次最多兑换 999 个");
+            }
+        }
+        return quantities;
+    }
+
+    private TreeMap<Long, Integer> aggregateOrderItems(List<OrderItem> items) {
+        TreeMap<Long, Integer> quantities = new TreeMap<>();
+        for (OrderItem item : items) {
+            if (item.getQuantity() == null || item.getQuantity() <= 0) {
+                throw new BusinessException("订单商品数量异常");
+            }
+            try {
+                quantities.merge(item.getProductId(), item.getQuantity(), Math::addExact);
+            } catch (ArithmeticException ex) {
+                throw new BusinessException("订单商品数量异常");
+            }
+        }
+        return quantities;
+    }
+
+    private Map<Long, Long> effectivePurchaseTotals(Long customerId, List<Long> productIds) {
+        Map<Long, Long> totals = new HashMap<>();
+        if (productIds.isEmpty()) return totals;
+        for (OrderItemRepository.CustomerProductPurchaseTotal total
+                : orderItemRepository.sumCustomerEffectivePurchases(customerId, productIds, EFFECTIVE_PURCHASE_STATUSES)) {
+            totals.put(total.getProductId(), total.getPurchasedQuantity());
+        }
+        return totals;
     }
 }

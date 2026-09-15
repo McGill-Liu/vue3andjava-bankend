@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mall.pointsmall.common.ApiResponse;
 import com.mall.pointsmall.enums.RoleType;
 import com.mall.pointsmall.service.CustomerSessionService;
+import com.mall.pointsmall.service.AdminSessionService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -24,13 +25,16 @@ import java.util.List;
 public class JwtAuthFilter extends OncePerRequestFilter {
     private final JwtTokenProvider tokenProvider;
     private final CustomerSessionService customerSessionService;
+    private final AdminSessionService adminSessionService;
     private final ObjectMapper objectMapper;
 
     public JwtAuthFilter(JwtTokenProvider tokenProvider,
                          CustomerSessionService customerSessionService,
+                         AdminSessionService adminSessionService,
                          ObjectMapper objectMapper) {
         this.tokenProvider = tokenProvider;
         this.customerSessionService = customerSessionService;
+        this.adminSessionService = adminSessionService;
         this.objectMapper = objectMapper;
     }
 
@@ -58,6 +62,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     unauthorized(response);
                     return;
                 }
+                if (user.getRole() != RoleType.CUSTOMER
+                        && !adminSessionService.isActive(user.getId(), tokenProvider.sessionId(token))) {
+                    unauthorized(response);
+                    return;
+                }
+                if (user.isPasswordChangeRequired() && !isPasswordChangePath(path)) {
+                    passwordChangeRequired(response);
+                    return;
+                }
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                         user, null, List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name())));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
@@ -73,6 +86,17 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         response.setStatus(HttpStatus.UNAUTHORIZED.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");
-        objectMapper.writeValue(response.getWriter(), ApiResponse.fail("登录超时，请重新登录"));
+        objectMapper.writeValue(response.getWriter(), ApiResponse.fail("登录状态已失效，请重新登录"));
+    }
+
+    private boolean isPasswordChangePath(String path) {
+        return "/api/auth/change-password".equals(path) || "/api/auth/logout".equals(path);
+    }
+
+    private void passwordChangeRequired(HttpServletResponse response) throws IOException {
+        response.setStatus(HttpStatus.FORBIDDEN.value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding("UTF-8");
+        objectMapper.writeValue(response.getWriter(), ApiResponse.fail("请先修改临时密码"));
     }
 }

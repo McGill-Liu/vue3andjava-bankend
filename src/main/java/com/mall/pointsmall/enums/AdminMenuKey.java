@@ -4,8 +4,10 @@ public enum AdminMenuKey {
     NOTIFICATIONS,
     USERS,
     POINTS,
+    PRODUCT_CATEGORIES,
     PRODUCTS,
     PRODUCT_TRANSACTIONS,
     ORDERS,
-    ADMINS
+    ADMINS,
+    OPERATION_RECORDS
 }

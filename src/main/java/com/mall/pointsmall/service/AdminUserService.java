@@ -17,13 +17,16 @@ public class AdminUserService {
     private final AdminUserRepository adminUserRepository;
     private final PasswordEncoder passwordEncoder;
     private final AdminPermissionService adminPermissionService;
+    private final AdminSessionService adminSessionService;
 
     public AdminUserService(AdminUserRepository adminUserRepository,
                             PasswordEncoder passwordEncoder,
-                            AdminPermissionService adminPermissionService) {
+                            AdminPermissionService adminPermissionService,
+                            AdminSessionService adminSessionService) {
         this.adminUserRepository = adminUserRepository;
         this.passwordEncoder = passwordEncoder;
         this.adminPermissionService = adminPermissionService;
+        this.adminSessionService = adminSessionService;
     }
 
     public List<AdminDtos.AdminResponse> list() {
@@ -43,7 +46,9 @@ public class AdminUserService {
         adminUser.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         Map<String, String> permissions = adminPermissionService.normalizeOperatorPermissions(request.getPermissions());
         adminUser.setPermissionsJson(adminPermissionService.toJson(permissions));
-        return toResponse(adminUserRepository.save(adminUser));
+        AdminDtos.AdminResponse response = toResponse(adminUserRepository.save(adminUser));
+        adminSessionService.revoke(adminUser.getId());
+        return response;
     }
 
     @Transactional
@@ -60,21 +65,29 @@ public class AdminUserService {
         adminUser.setPermissionsJson(adminPermissionService.toJson(
                 adminPermissionService.normalizeOperatorPermissions(request.getPermissions())
         ));
-        return toResponse(adminUserRepository.save(adminUser));
+        AdminDtos.AdminResponse response = toResponse(adminUserRepository.save(adminUser));
+        adminSessionService.revoke(id);
+        return response;
     }
 
     @Transactional
-    public void updateStatus(Long id, boolean enabled) {
+    public AdminDtos.AdminResponse updateStatus(Long id, boolean enabled) {
         AdminUser adminUser = adminUserRepository.findById(id).orElseThrow(() -> new BusinessException("管理员不存在"));
+        assertNotSuperAdmin(adminUser, "不能停用或启用超级管理员");
         adminUser.setEnabled(enabled);
-        adminUserRepository.save(adminUser);
+        AdminDtos.AdminResponse response = toResponse(adminUserRepository.save(adminUser));
+        adminSessionService.revoke(id);
+        return response;
     }
 
     @Transactional
-    public void resetPassword(Long id, String password) {
+    public AdminDtos.AdminResponse resetPassword(Long id, String password) {
         AdminUser adminUser = adminUserRepository.findById(id).orElseThrow(() -> new BusinessException("管理员不存在"));
+        assertNotSuperAdmin(adminUser, "超级管理员只能登录后修改本人密码");
         adminUser.setPasswordHash(passwordEncoder.encode(password));
-        adminUserRepository.save(adminUser);
+        AdminDtos.AdminResponse response = toResponse(adminUserRepository.save(adminUser));
+        adminSessionService.revoke(id);
+        return response;
     }
 
     private AdminDtos.AdminResponse toResponse(AdminUser adminUser) {
@@ -82,8 +95,15 @@ public class AdminUserService {
         response.setId(adminUser.getId());
         response.setName(adminUser.getName());
         response.setEmail(adminUser.getEmail());
+        response.setRole(adminUser.getRole().name());
         response.setEnabled(adminUser.isEnabled());
         response.setPermissions(adminPermissionService.resolvedPermissions(adminUser));
         return response;
+    }
+
+    private void assertNotSuperAdmin(AdminUser adminUser, String message) {
+        if (adminUser.getRole() == RoleType.SUPER_ADMIN) {
+            throw new BusinessException(message);
+        }
     }
 }

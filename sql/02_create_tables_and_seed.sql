@@ -51,11 +51,18 @@ CREATE TABLE IF NOT EXISTS points_mall.product (
   gallery_json LONGTEXT NULL,
   points_cost INT NOT NULL,
   stock INT NOT NULL,
+  per_order_limit INT NULL,
+  customer_total_limit INT NULL,
   enabled BIT(1) NOT NULL DEFAULT b'1',
   sort_order INT NOT NULL DEFAULT 0,
   description LONGTEXT NULL,
   KEY idx_product_category_id (category_id),
-  KEY idx_product_enabled_created_at (enabled, created_at)
+  KEY idx_product_enabled_created_at (enabled, created_at),
+  CONSTRAINT chk_product_per_order_limit CHECK (per_order_limit IS NULL OR per_order_limit BETWEEN 1 AND 999),
+  CONSTRAINT chk_product_customer_total_limit CHECK (customer_total_limit IS NULL OR customer_total_limit BETWEEN 1 AND 999),
+  CONSTRAINT chk_product_limit_relation CHECK (
+    per_order_limit IS NULL OR customer_total_limit IS NULL OR per_order_limit <= customer_total_limit
+  )
 );
 
 CREATE TABLE IF NOT EXISTS points_mall.points_account (
@@ -112,6 +119,7 @@ CREATE TABLE IF NOT EXISTS points_mall.order_main (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   order_no VARCHAR(64) NOT NULL UNIQUE,
   customer_id BIGINT NOT NULL,
+  checkout_token VARCHAR(64) NULL,
   customer_name VARCHAR(100) NOT NULL,
   customer_phone VARCHAR(20) NOT NULL,
   customer_id_card_no VARCHAR(64) NOT NULL,
@@ -128,6 +136,8 @@ CREATE TABLE IF NOT EXISTS points_mall.order_main (
   completed_at DATETIME NULL,
   cancelled_at DATETIME NULL,
   KEY idx_order_main_customer_id (customer_id),
+  UNIQUE KEY uk_order_customer_checkout_token (customer_id, checkout_token),
+  KEY idx_order_main_customer_status (customer_id, status),
   KEY idx_order_main_status_created_at (status, created_at),
   KEY idx_order_main_status_shipped_at (status, shipped_at)
 );
@@ -143,6 +153,7 @@ CREATE TABLE IF NOT EXISTS points_mall.order_item (
   points_cost INT NOT NULL,
   quantity INT NOT NULL,
   KEY idx_order_item_order_id (order_id),
+  KEY idx_order_item_order_product (order_id, product_id),
   KEY idx_order_item_product_id (product_id)
 );
 

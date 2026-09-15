@@ -33,6 +33,10 @@ public class PointsService {
         return pointsAccountRepository.findByCustomerId(customerId).map(PointsAccount::getBalance).orElse(0);
     }
 
+    public int balanceForUpdate(Long customerId) {
+        return requireAccountForUpdate(customerId).getBalance();
+    }
+
     public List<PointsTransaction> transactions(Long customerId) {
         return customerId == null ? pointsTransactionRepository.findAllByOrderByCreatedAtDesc()
                 : pointsTransactionRepository.findByCustomerIdOrderByCreatedAtDesc(customerId);
@@ -40,6 +44,9 @@ public class PointsService {
 
     @Transactional
     public PointsTransaction initialize(Long customerId, int amount, SecurityUser actor) {
+        if (amount < 0) {
+            throw new BusinessException("初始积分不能小于 0");
+        }
         PointsAccount account = new PointsAccount();
         account.setCustomerId(customerId);
         account.setBalance(amount);
@@ -50,9 +57,17 @@ public class PointsService {
 
     @Transactional
     public PointsTransaction setBalance(Long customerId, int targetBalance, String remark, SecurityUser actor) {
-        PointsAccount account = requireAccount(customerId);
+        if (targetBalance < 0) {
+            throw new BusinessException("目标积分不能小于 0");
+        }
+        PointsAccount account = requireAccountForUpdate(customerId);
         int before = account.getBalance();
-        int amount = targetBalance - before;
+        int amount;
+        try {
+            amount = Math.subtractExact(targetBalance, before);
+        } catch (ArithmeticException ex) {
+            throw new BusinessException("积分变动数值过大");
+        }
         if (amount == 0) {
             throw new BusinessException("目标积分与当前积分相同");
         }
@@ -77,9 +92,14 @@ public class PointsService {
 
     private PointsTransaction changePoints(Long customerId, int amount, PointsTransactionType type, Long orderId,
                                            String remark, PointsActorType actorType, Long actorId, String actorName) {
-        PointsAccount account = requireAccount(customerId);
+        PointsAccount account = requireAccountForUpdate(customerId);
         int before = account.getBalance();
-        int after = before + amount;
+        int after;
+        try {
+            after = Math.addExact(before, amount);
+        } catch (ArithmeticException ex) {
+            throw new BusinessException("积分变动数值过大");
+        }
         if (after < 0) {
             throw new BusinessException("积分不足");
         }
@@ -90,6 +110,11 @@ public class PointsService {
 
     private PointsAccount requireAccount(Long customerId) {
         return pointsAccountRepository.findByCustomerId(customerId)
+                .orElseThrow(() -> new BusinessException("积分账户不存在"));
+    }
+
+    private PointsAccount requireAccountForUpdate(Long customerId) {
+        return pointsAccountRepository.findByCustomerIdForUpdate(customerId)
                 .orElseThrow(() -> new BusinessException("积分账户不存在"));
     }
 

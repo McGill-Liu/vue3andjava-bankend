@@ -14,4 +14,5 @@ public class SecurityUser {
     private String phone;
     private RoleType role;
     private Map<String, String> permissions;
+    private boolean passwordChangeRequired;
 }

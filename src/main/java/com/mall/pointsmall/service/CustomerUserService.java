@@ -1,51 +1,77 @@
 package com.mall.pointsmall.service;
 
 import com.mall.pointsmall.dto.AdminDtos;
+import com.mall.pointsmall.entity.CustomerAddress;
 import com.mall.pointsmall.entity.CustomerUser;
 import com.mall.pointsmall.enums.UserStatus;
 import com.mall.pointsmall.exception.BusinessException;
 import com.mall.pointsmall.repository.CustomerUserRepository;
+import com.mall.pointsmall.repository.CustomerAddressRepository;
 import com.mall.pointsmall.security.SecurityUser;
 import jakarta.transaction.Transactional;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.security.SecureRandom;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class CustomerUserService {
+    private static final SecureRandom RANDOM = new SecureRandom();
+    private static final int TEMP_PASSWORD_DAYS = 7;
     private final CustomerUserRepository customerUserRepository;
     private final PasswordEncoder passwordEncoder;
     private final PointsService pointsService;
+    private final CustomerSessionService customerSessionService;
+    private final CustomerAddressRepository customerAddressRepository;
 
     public CustomerUserService(CustomerUserRepository customerUserRepository,
                                PasswordEncoder passwordEncoder,
-                               PointsService pointsService) {
+                               PointsService pointsService,
+                               CustomerSessionService customerSessionService,
+                               CustomerAddressRepository customerAddressRepository) {
         this.customerUserRepository = customerUserRepository;
         this.passwordEncoder = passwordEncoder;
         this.pointsService = pointsService;
+        this.customerSessionService = customerSessionService;
+        this.customerAddressRepository = customerAddressRepository;
     }
 
     public List<AdminDtos.CustomerResponse> listAll() {
-        return customerUserRepository.findAll().stream().map(this::response).toList();
+        List<CustomerUser> users = customerUserRepository.findAll();
+        if (users.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, List<AdminDtos.CustomerAddressResponse>> addresses = customerAddressRepository
+                .findByCustomerIdInOrderByCustomerIdAscDefaultAddressDescCreatedAtDesc(users.stream().map(CustomerUser::getId).toList())
+                .stream()
+                .collect(Collectors.groupingBy(CustomerAddress::getCustomerId,
+                        Collectors.mapping(this::addressResponse, Collectors.toList())));
+        return users.stream().map(user -> response(user, addresses.getOrDefault(user.getId(), List.of()))).toList();
     }
 
     public AdminDtos.CustomerResponse getById(Long id) {
-        return response(requireUser(id));
+        return response(requireUser(id), addressesOf(id));
     }
 
     @Transactional
-    public AdminDtos.CustomerResponse create(AdminDtos.CustomerCreateRequest request, SecurityUser actor) {
+    public AdminDtos.CustomerTemporaryPasswordResponse create(AdminDtos.CustomerCreateRequest request, SecurityUser actor) {
         assertAvailable(request.getPhone(), request.getIdCardNo(), null);
         CustomerUser user = new CustomerUser();
         user.setName(request.getName());
         user.setPhone(request.getPhone());
         user.setIdCardNo(request.getIdCardNo());
-        user.setPasswordHash(passwordEncoder.encode(defaultPassword(request.getIdCardNo())));
+        String temporaryPassword = temporaryPassword();
+        user.setPasswordHash(passwordEncoder.encode(temporaryPassword));
         user.setStatus(UserStatus.ACTIVE);
+        user.setMustChangePassword(true);
+        user.setTempPasswordExpiresAt(LocalDateTime.now().plusDays(TEMP_PASSWORD_DAYS));
         CustomerUser saved = customerUserRepository.save(user);
         pointsService.initialize(saved.getId(), request.getInitialPoints(), actor);
-        return response(saved);
+        return temporaryPasswordResponse(saved, temporaryPassword);
     }
 
     @Transactional
@@ -60,28 +86,37 @@ public class CustomerUserService {
         } catch (IllegalArgumentException ex) {
             throw new BusinessException("客户状态无效");
         }
-        return response(customerUserRepository.save(user));
+        CustomerUser saved = customerUserRepository.save(user);
+        customerSessionService.logout(id);
+        return response(saved, addressesOf(id));
     }
 
     @Transactional
-    public void resetPassword(Long id) {
+    public AdminDtos.CustomerTemporaryPasswordResponse resetPassword(Long id) {
         CustomerUser user = requireUser(id);
-        user.setPasswordHash(passwordEncoder.encode(defaultPassword(user.getIdCardNo())));
-        customerUserRepository.save(user);
+        String temporaryPassword = temporaryPassword();
+        user.setPasswordHash(passwordEncoder.encode(temporaryPassword));
+        user.setMustChangePassword(true);
+        user.setTempPasswordExpiresAt(LocalDateTime.now().plusDays(TEMP_PASSWORD_DAYS));
+        user.setFailedLoginAttempts(0);
+        user.setLoginLockedUntil(null);
+        CustomerUser saved = customerUserRepository.save(user);
+        customerSessionService.logout(user.getId());
+        return temporaryPasswordResponse(saved, temporaryPassword);
     }
 
     @Transactional
     public AdminDtos.CustomerResponse setBalance(Long id, AdminDtos.CustomerBalanceRequest request, SecurityUser actor) {
         CustomerUser user = requireUser(id);
         pointsService.setBalance(user.getId(), request.getTargetBalance(), request.getRemark(), actor);
-        return response(user);
+        return response(user, addressesOf(id));
     }
 
     private CustomerUser requireUser(Long id) {
         return customerUserRepository.findById(id).orElseThrow(() -> new BusinessException("客户不存在"));
     }
 
-    private AdminDtos.CustomerResponse response(CustomerUser user) {
+    private AdminDtos.CustomerResponse response(CustomerUser user, List<AdminDtos.CustomerAddressResponse> addresses) {
         AdminDtos.CustomerResponse result = new AdminDtos.CustomerResponse();
         result.setId(user.getId());
         result.setName(user.getName());
@@ -89,6 +124,25 @@ public class CustomerUserService {
         result.setIdCardNo(user.getIdCardNo());
         result.setStatus(user.getStatus().name());
         result.setPointsBalance(pointsService.balanceOf(user.getId()));
+        result.setMustChangePassword(user.isMustChangePassword());
+        result.setTempPasswordExpiresAt(user.getTempPasswordExpiresAt() == null ? null : user.getTempPasswordExpiresAt().toString());
+        result.setLoginLockedUntil(user.getLoginLockedUntil() == null ? null : user.getLoginLockedUntil().toString());
+        result.setWechatBound(user.getWechatOpenId() != null);
+        result.setAddresses(addresses);
+        return result;
+    }
+
+    private List<AdminDtos.CustomerAddressResponse> addressesOf(Long customerId) {
+        return customerAddressRepository.findByCustomerIdOrderByDefaultAddressDescCreatedAtDesc(customerId)
+                .stream().map(this::addressResponse).toList();
+    }
+
+    private AdminDtos.CustomerAddressResponse addressResponse(CustomerAddress address) {
+        AdminDtos.CustomerAddressResponse result = new AdminDtos.CustomerAddressResponse();
+        result.setRecipientName(address.getRecipientName());
+        result.setRecipientPhone(address.getRecipientPhone());
+        result.setDetailAddress(address.getDetailAddress());
+        result.setDefaultAddress(address.isDefaultAddress());
         return result;
     }
 
@@ -104,10 +158,17 @@ public class CustomerUserService {
                 });
     }
 
-    private String defaultPassword(String idCardNo) {
-        if (idCardNo.length() < 6) {
-            throw new BusinessException("身份证号至少需要 6 位");
-        }
-        return idCardNo.substring(idCardNo.length() - 6);
+    private AdminDtos.CustomerTemporaryPasswordResponse temporaryPasswordResponse(CustomerUser user, String password) {
+        AdminDtos.CustomerTemporaryPasswordResponse response = new AdminDtos.CustomerTemporaryPasswordResponse();
+        response.setCustomerId(user.getId());
+        response.setCustomerName(user.getName());
+        response.setTemporaryPassword(password);
+        response.setExpiresAt(user.getTempPasswordExpiresAt().toString());
+        return response;
     }
+
+    private String temporaryPassword() {
+        return String.format("%06d", RANDOM.nextInt(1_000_000));
+    }
+
 }
